@@ -28,16 +28,17 @@ function translate(locale: Locale, key: string, params?: Record<string, string |
   return text
 }
 
-export const useI18n = create<I18nStore>((set, get) => ({
+function createTranslator(locale: Locale): I18nStore['t'] {
+  return (key, params) => translate(locale, key, params)
+}
+
+export const useI18n = create<I18nStore>((set) => ({
   locale: savedLocale,
 
   setLocale: (locale) => {
     localStorage.setItem('redix:locale', locale)
-    set({ locale })
+    set({ locale, t: createTranslator(locale) })
   },
 
-  t: (key, params) => {
-    const { locale } = get()
-    return translate(locale, key, params)
-  },
+  t: createTranslator(savedLocale),
 }))

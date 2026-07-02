@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Trash2, Edit3, Clock, Key, Copy, Save } from 'lucide-react'
 import { useBrowserStore } from '../store/browserStore'
 import { useConnectionStore } from '../store/connectionStore'
@@ -18,6 +18,7 @@ const KeyDetail: React.FC = () => {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
+  const ttlEditorRef = useRef<HTMLSpanElement>(null)
 
   const handleTTLSave = useCallback(() => {
     if (!activeConnectionId || !selectedKey) return
@@ -48,6 +49,27 @@ const KeyDetail: React.FC = () => {
       })
     }
   }, [selectedKey])
+
+  useEffect(() => {
+    if (!editingTTL) return
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Node && ttlEditorRef.current?.contains(target)) {
+        return
+      }
+      setEditingTTL(false)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown, true)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true)
+    }
+  }, [editingTTL])
+
+  useEffect(() => {
+    setEditingTTL(false)
+  }, [selectedKey?.key])
 
 
 
@@ -120,7 +142,7 @@ const KeyDetail: React.FC = () => {
             <Clock size={12} style={{ color: 'var(--text-tertiary)' }} />
             <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>{t('detail.ttl')}</span>
             {editingTTL ? (
-              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+              <span ref={ttlEditorRef} style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
                 <input
                   className="input"
                   style={{ width: 72, padding: '2px 6px', fontSize: 'var(--font-size-xs)' }}
