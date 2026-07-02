@@ -1,0 +1,14 @@
+.DS_Store
+.npm-cache/
+.tmp.iconset/
+
+node_modules/
+out/
+dist/
+
+*.log
+*.tsbuildinfo
+
+coverage/
+.env
+.env.*

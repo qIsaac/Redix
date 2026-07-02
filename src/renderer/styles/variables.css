@@ -1,0 +1,138 @@
+/* ============================================
+ * macOS Design System — CSS Variables
+ * Redix
+ * ============================================ */
+
+/* Light Mode (default) */
+:root {
+  /* 背景色 */
+  --bg-primary: #ffffff;
+  --bg-secondary: #f5f5f7;
+  --bg-tertiary: #e8e8ed;
+  --bg-sidebar: rgba(246, 246, 246, 0.8);
+  --bg-hover: rgba(0, 0, 0, 0.04);
+  --bg-active: rgba(0, 122, 255, 0.1);
+  --bg-selected: rgba(0, 122, 255, 0.12);
+  --bg-input: #ffffff;
+  --bg-card: #ffffff;
+  --bg-popover: #ffffff;
+
+  /* 文字色 */
+  --text-primary: #1d1d1f;
+  --text-secondary: #86868b;
+  --text-tertiary: #aeaeb2;
+  --text-accent: #007aff;
+  --text-on-accent: #ffffff;
+  --text-danger: #ff3b30;
+  --text-success: #34c759;
+  --text-warning: #ff9500;
+
+  /* 强调色 */
+  --accent-color: #007aff;
+  --accent-hover: #0071eb;
+  --accent-active: #0066d6;
+
+  /* 边框 */
+  --border-color: rgba(0, 0, 0, 0.1);
+  --border-color-strong: rgba(0, 0, 0, 0.15);
+  --border-radius-sm: 4px;
+  --border-radius-md: 6px;
+  --border-radius-lg: 10px;
+  --border-radius-xl: 12px;
+
+  /* 阴影 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.08);
+  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.12);
+  --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.12);
+
+  /* 间距 */
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  /* 字体 */
+  --font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Helvetica Neue', 'PingFang SC', sans-serif;
+  --font-mono: 'SF Mono', 'Menlo', 'Monaco', 'Consolas', monospace;
+  --font-size-xs: 11px;
+  --font-size-sm: 12px;
+  --font-size-md: 13px;
+  --font-size-lg: 15px;
+  --font-size-xl: 17px;
+  --font-size-2xl: 22px;
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+
+  /* 状态色 */
+  --status-connected: #34c759;
+  --status-connecting: #ff9500;
+  --status-error: #ff3b30;
+  --status-disconnected: #8e8e93;
+
+  /* 语义色 */
+  --danger-color: #ff3b30;
+  --success-color: #34c759;
+  --warning-color: #ff9500;
+  --info-color: #007aff;
+
+  /* 动画 */
+  --transition-fast: 150ms ease;
+  --transition-normal: 250ms ease;
+  --transition-slow: 350ms ease;
+
+  /* 布局 */
+  --sidebar-width: 240px;
+  --titlebar-height: 52px;
+  --statusbar-height: 24px;
+}
+
+/* Dark Mode */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg-primary: #1e1e1e;
+    --bg-secondary: #2d2d2d;
+    --bg-tertiary: #3a3a3a;
+    --bg-sidebar: rgba(46, 46, 46, 0.8);
+    --bg-hover: rgba(255, 255, 255, 0.06);
+    --bg-active: rgba(10, 132, 255, 0.15);
+    --bg-selected: rgba(10, 132, 255, 0.2);
+    --bg-input: #2d2d2d;
+    --bg-card: #2d2d2d;
+    --bg-popover: #2d2d2d;
+
+    --text-primary: #f5f5f7;
+    --text-secondary: #86868b;
+    --text-tertiary: #636366;
+    --text-accent: #0a84ff;
+    --text-on-accent: #ffffff;
+    --text-danger: #ff453a;
+    --text-success: #30d158;
+    --text-warning: #ff9f0a;
+
+    --accent-color: #0a84ff;
+    --accent-hover: #409cff;
+    --accent-active: #0071eb;
+
+    --border-color: rgba(255, 255, 255, 0.1);
+    --border-color-strong: rgba(255, 255, 255, 0.15);
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.2);
+    --shadow-md: 0 2px 8px rgba(0, 0, 0, 0.3);
+    --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.4);
+    --shadow-popover: 0 4px 16px rgba(0, 0, 0, 0.4);
+
+    --status-connected: #30d158;
+    --status-connecting: #ff9f0a;
+    --status-error: #ff453a;
+    --status-disconnected: #636366;
+
+    --danger-color: #ff453a;
+    --success-color: #30d158;
+    --warning-color: #ff9f0a;
+    --info-color: #0a84ff;
+  }
+}

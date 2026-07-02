@@ -1,0 +1,97 @@
+/* ============================================
+ * macOS Design System — Global Reset & Base
+ * Redix
+ * ============================================ */
+
+@import './variables.css';
+
+/* CSS Reset */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  overflow: hidden;
+}
+
+body {
+  font-family: var(--font-family);
+  font-size: var(--font-size-md);
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0;
+  line-height: 1.5;
+}
+
+/* Scrollbar — macOS style */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.25);
+  background-clip: content-box;
+}
+
+@media (prefers-color-scheme: dark) {
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.15);
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.25);
+    background-clip: content-box;
+  }
+}
+
+/* Text selection */
+::selection {
+  background: rgba(0, 122, 255, 0.2);
+}
+
+/* Links */
+a {
+  color: var(--text-accent);
+  text-decoration: none;
+}
+
+/* Focus ring */
+:focus-visible {
+  outline: 2px solid var(--accent-color);
+  outline-offset: 2px;
+}
+
+/* Disable drag */
+img, a, button {
+  -webkit-user-drag: none;
+}
+
+/* Titlebar drag regions */
+.titlebar-drag-region {
+  -webkit-app-region: drag;
+  font-variant-ligatures: none;
+  font-feature-settings: "liga" 0, "clig" 0;
+}
+
+.titlebar-no-drag {
+  -webkit-app-region: no-drag;
+}

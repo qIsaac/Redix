@@ -1,0 +1,289 @@
+import React, { useCallback, useState } from 'react'
+import { Trash2, Edit3, Clock, Key, Copy, Save } from 'lucide-react'
+import { useBrowserStore } from '../store/browserStore'
+import { useConnectionStore } from '../store/connectionStore'
+import { StringEditor, HashEditor, ListEditor, SetEditor, ZSetEditor, StreamViewer } from './editors'
+import { useI18n } from '../i18n'
+
+const KeyDetail: React.FC = () => {
+  const t = useI18n((s) => s.t)
+  const selectedKey = useBrowserStore((s) => s.selectedKey)
+  const deleteKey = useBrowserStore((s) => s.deleteKey)
+  const renameKey = useBrowserStore((s) => s.renameKey)
+  const setKeyTTL = useBrowserStore((s) => s.setKeyTTL)
+  const activeConnectionId = useConnectionStore((s) => s.activeConnectionId)
+
+  const [editingTTL, setEditingTTL] = useState(false)
+  const [ttlValue, setTTLValue] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [showRenameDialog, setShowRenameDialog] = useState(false)
+  const [newKeyName, setNewKeyName] = useState('')
+
+  const handleTTLSave = useCallback(() => {
+    if (!activeConnectionId || !selectedKey) return
+    const parsed = parseInt(ttlValue, 10)
+    if (!isNaN(parsed)) {
+      setKeyTTL(activeConnectionId, selectedKey.key, parsed)
+    }
+    setEditingTTL(false)
+  }, [activeConnectionId, selectedKey, ttlValue, setKeyTTL])
+
+  const handleDelete = useCallback(() => {
+    if (!activeConnectionId || !selectedKey) return
+    deleteKey(activeConnectionId, selectedKey.key)
+    setShowDeleteConfirm(false)
+  }, [activeConnectionId, selectedKey, deleteKey])
+
+  const handleRename = useCallback(() => {
+    if (!activeConnectionId || !selectedKey || !newKeyName.trim()) return
+    renameKey(activeConnectionId, selectedKey.key, newKeyName.trim())
+    setShowRenameDialog(false)
+    setNewKeyName('')
+  }, [activeConnectionId, selectedKey, newKeyName, renameKey])
+
+  const handleCopyKey = useCallback(() => {
+    if (selectedKey) {
+      navigator.clipboard.writeText(selectedKey.key).catch(() => {
+        /* ignore */
+      })
+    }
+  }, [selectedKey])
+
+
+
+  // Empty state
+  if (!selectedKey) {
+    return (
+      <div className="empty-state">
+        <Key className="empty-state-icon" />
+        <div className="empty-state-title">{t('detail.noKeySelected')}</div>
+        <div className="empty-state-description">
+          {t('detail.noKeySelectedDesc')}
+        </div>
+      </div>
+    )
+  }
+
+  const typeClass = `badge badge-${selectedKey.type}`
+  const ttlDisplay = selectedKey.ttl === -1 ? t('detail.noExpiry') : `${selectedKey.ttl}s`
+  const memoryDisplay =
+    selectedKey.memory != null ? formatBytes(selectedKey.memory) : '—'
+
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+      {/* Key Info Header */}
+      <div
+        style={{
+          padding: '12px 16px',
+          borderBottom: '1px solid var(--border-color)',
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+          <span
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              color: 'var(--text-secondary)',
+              fontWeight: 500,
+              textTransform: 'uppercase',
+              letterSpacing: '0.04em',
+            }}
+          >
+            {t('detail.key')}
+          </span>
+          <span
+            className="mono"
+            style={{
+              flex: 1,
+              fontSize: 'var(--font-size-md)',
+              fontWeight: 600,
+              color: 'var(--text-primary)',
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+            }}
+          >
+            {selectedKey.key}
+          </span>
+          <button className="btn btn-ghost btn-sm" onClick={handleCopyKey} title={t('detail.copyKeyName')}>
+            <Copy size={13} />
+          </button>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>{t('detail.type')}</span>
+            <span className={typeClass}>{selectedKey.type}</span>
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <Clock size={12} style={{ color: 'var(--text-tertiary)' }} />
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>{t('detail.ttl')}</span>
+            {editingTTL ? (
+              <span style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+                <input
+                  className="input"
+                  style={{ width: 72, padding: '2px 6px', fontSize: 'var(--font-size-xs)' }}
+                  type="number"
+                  value={ttlValue}
+                  onChange={(e) => setTTLValue(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleTTLSave()
+                    if (e.key === 'Escape') setEditingTTL(false)
+                  }}
+                  autoFocus
+                />
+                <button className="btn btn-primary btn-sm" style={{ padding: '2px 6px' }} onClick={handleTTLSave}>
+                  <Save size={11} />
+                </button>
+              </span>
+            ) : (
+              <span
+                style={{
+                  fontSize: 'var(--font-size-xs)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  textDecoration: 'underline',
+                  textDecorationStyle: 'dotted',
+                }}
+                onClick={() => {
+                  setTTLValue(String(selectedKey.ttl))
+                  setEditingTTL(true)
+                }}
+                title={t('detail.clickToEditTTL')}
+              >
+                {ttlDisplay}
+              </span>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>{t('detail.memory')}</span>
+            <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-primary)' }}>{memoryDisplay}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Editor Area */}
+      <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
+        {activeConnectionId && selectedKey && renderEditor(activeConnectionId, selectedKey.type, selectedKey.key)}
+      </div>
+
+      {/* Action Buttons */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: 8,
+          padding: '10px 16px',
+          borderTop: '1px solid var(--border-color)',
+          flexShrink: 0,
+        }}
+      >
+        <div style={{ flex: 1 }} />
+        <button
+          className="btn btn-secondary btn-sm"
+          onClick={() => {
+            setNewKeyName(selectedKey.key)
+            setShowRenameDialog(true)
+          }}
+        >
+          <Edit3 size={13} />
+          {t('detail.rename')}
+        </button>
+        <button className="btn btn-danger btn-sm" onClick={() => setShowDeleteConfirm(true)}>
+          <Trash2 size={13} />
+          {t('detail.delete')}
+        </button>
+      </div>
+
+      {/* Delete Confirmation Dialog */}
+      {showDeleteConfirm && (
+        <div className="dialog-overlay" onClick={() => setShowDeleteConfirm(false)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-title">{t('detail.deleteKey')}</div>
+            <div className="dialog-description">
+              {t('detail.deleteKeyConfirm', { key: selectedKey.key })}
+            </div>
+            <div className="dialog-actions">
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowDeleteConfirm(false)}>
+                {t('editor.cancel')}
+              </button>
+              <button className="btn btn-danger btn-sm" onClick={handleDelete}>
+                {t('detail.delete')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Rename Dialog */}
+      {showRenameDialog && (
+        <div className="dialog-overlay" onClick={() => setShowRenameDialog(false)}>
+          <div className="dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="dialog-title">{t('detail.renameKey')}</div>
+            <div className="dialog-description">{t('detail.renameKeyDesc')}</div>
+            <input
+              className="input"
+              style={{ marginBottom: 16 }}
+              value={newKeyName}
+              onChange={(e) => setNewKeyName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') handleRename()
+                if (e.key === 'Escape') setShowRenameDialog(false)
+              }}
+              autoFocus
+            />
+            <div className="dialog-actions">
+              <button className="btn btn-secondary btn-sm" onClick={() => setShowRenameDialog(false)}>
+                {t('editor.cancel')}
+              </button>
+              <button className="btn btn-primary btn-sm" onClick={handleRename} disabled={!newKeyName.trim()}>
+                {t('detail.rename')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+function renderEditor(
+  connectionId: string,
+  type: string,
+  keyName: string
+): React.ReactElement {
+  const props = { connectionId, keyName }
+  switch (type) {
+    case 'string':
+      return <StringEditor {...props} />
+    case 'hash':
+      return <HashEditor {...props} />
+    case 'list':
+      return <ListEditor {...props} />
+    case 'set':
+      return <SetEditor {...props} />
+    case 'zset':
+      return <ZSetEditor {...props} />
+    case 'stream':
+      return <StreamViewer {...props} />
+    default:
+      return (
+        <div className="empty-state" style={{ height: 'auto', padding: '40px 0' }}>
+          <div className="empty-state-title">{useI18n.getState().t('detail.unknownType')}</div>
+          <div className="empty-state-description">{useI18n.getState().t('detail.unknownTypeDesc', { type })}</div>
+        </div>
+      )
+  }
+}
+
+function formatBytes(bytes: number): string {
+  if (bytes === 0) return '0 B'
+  const units = ['B', 'KB', 'MB', 'GB']
+  const i = Math.floor(Math.log(bytes) / Math.log(1024))
+  const val = bytes / Math.pow(1024, i)
+  return `${val.toFixed(i === 0 ? 0 : 1)} ${units[i]}`
+}
+
+export default KeyDetail
