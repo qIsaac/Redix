@@ -5,6 +5,8 @@
 node_modules/
 out/
 dist/
+dist-web/
+src-tauri/target/
 
 *.log
 *.tsbuildinfo

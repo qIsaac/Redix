@@ -3,7 +3,7 @@ import type { ConnectionStatus } from '../../shared/types'
 import { useConnectionStore } from '../store/connectionStore'
 
 /**
- * Hook to listen for connection status changes from the main process.
+ * Hook to listen for connection status changes from the native backend.
  */
 export function useConnectionStatus(): void {
   const updateConnectionStatus = useConnectionStore((s) => s.updateConnectionStatus)
@@ -13,13 +13,10 @@ export function useConnectionStatus(): void {
       updateConnectionStatus(data.id, data.status as ConnectionStatus, data.error)
     }
 
-    const api = window.electronAPI || window.api
-    api?.connection?.onStatusChanged(handler)
+    const unsubscribe = window.redixAPI.connection.onStatusChanged(handler)
 
-    // Cleanup: currently preload does not return unsubscribe function;
-    // when preload is updated to return one, use it here.
     return () => {
-      // no-op for now
+      unsubscribe?.()
     }
   }, [updateConnectionStatus])
 }

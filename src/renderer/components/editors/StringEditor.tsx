@@ -25,7 +25,7 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
   const loadValue = useCallback(async () => {
     setIsLoading(true)
     try {
-      const result = (await window.electronAPI.data.view(connectionId, keyName)) as {
+      const result = (await window.redixAPI.data.view(connectionId, keyName)) as {
         success: boolean
         data?: unknown
       }
@@ -75,7 +75,7 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
   const handleSave = useCallback(async () => {
     setIsSaving(true)
     try {
-      const result = (await window.electronAPI.data.update(connectionId, keyName, value)) as {
+      const result = (await window.redixAPI.data.update(connectionId, keyName, value)) as {
         success: boolean
         error?: { message: string }
       }

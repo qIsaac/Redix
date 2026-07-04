@@ -2,68 +2,47 @@
   "name": "redix-app",
   "productName": "Redix",
   "version": "1.0.0",
-  "description": "Redix — A modern Redis desktop client built with Electron, React & TypeScript",
-  "main": "./out/main/index.js",
+  "description": "Redix — A modern Redis desktop client built with Tauri, React & TypeScript",
   "scripts": {
-    "dev": "electron-vite dev",
-    "build": "electron-vite build",
-    "preview": "electron-vite preview",
-    "postinstall": "electron-builder install-app-deps",
-    "build:unpack": "npm run build && electron-builder --dir",
-    "build:mac": "npm run build && electron-builder --mac",
-    "build:win": "npm run build && electron-builder --win",
-    "build:linux": "npm run build && electron-builder --linux",
-    "typecheck:node": "tsc --noEmit -p tsconfig.node.json --composite false",
+    "dev": "tauri dev",
+    "dev:web": "vite --config vite.config.ts --host 127.0.0.1",
+    "build": "tauri build --bundles app",
+    "build:dmg": "tauri build --bundles dmg",
+    "build:web": "vite build --config vite.config.ts",
+    "preview": "vite preview --config vite.config.ts",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:node && npm run typecheck:web"
+    "typecheck": "npm run typecheck:web"
   },
   "keywords": [
     "redis",
-    "electron",
+    "tauri",
     "desktop"
   ],
   "author": "",
   "license": "MIT",
-  "build": {
-    "appId": "com.redix.app",
-    "productName": "Redix",
-    "mac": {
-      "category": "public.app-category.developer-tools",
-      "icon": "resources/icon.png"
-    },
-    "win": {
-      "icon": "resources/icon.png"
-    },
-    "linux": {
-      "icon": "resources/icon.png"
-    }
-  },
   "devDependencies": {
-    "@types/node": "^26.0.1",
-    "@types/react": "^19.2.17",
-    "@types/react-dom": "^19.2.3",
-    "@vitejs/plugin-react": "^4.7.0",
-    "electron": "^35.7.5",
-    "electron-builder": "^26.15.3",
-    "electron-vite": "^3.1.0",
-    "typescript": "^5.9.3",
-    "vite": "^6.4.3"
-  },
-  "dependencies": {
-    "@electron-toolkit/utils": "^4.0.0",
     "@radix-ui/react-context-menu": "^2.3.2",
     "@radix-ui/react-dialog": "^1.1.18",
     "@radix-ui/react-dropdown-menu": "^2.1.19",
     "@radix-ui/react-tabs": "^1.1.16",
     "@radix-ui/react-tooltip": "^1.2.11",
+    "@tauri-apps/cli": "^2.0.0",
+    "@types/node": "^26.0.1",
+    "@types/react": "^19.2.17",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
-    "electron-store": "^8.2.0",
-    "ioredis": "^5.11.1",
     "lucide-react": "^1.22.0",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-window": "^2.2.7",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.3",
     "zustand": "^5.0.14"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-clipboard-manager": "^2.0.0"
   }
 }

@@ -1,0 +1,1 @@
+{"default":{"identifier":"default","description":"Default Redix desktop permissions","local":true,"windows":["main"],"permissions":["core:event:allow-listen","core:event:allow-unlisten","clipboard-manager:allow-read-text","clipboard-manager:allow-write-text"]}}

@@ -6,6 +6,7 @@ import { useAppStore, type ActiveView } from '../store/appStore'
 import { useBrowserStore } from '../store/browserStore'
 import type { ConnectionStatus } from '../../shared/types'
 import { DatabaseDialog } from './DatabaseDialog'
+import { DbSelectorDialog } from './DbSelectorDialog'
 import { useI18n } from '../i18n'
 
 function statusDotClass(status: ConnectionStatus): string {
@@ -32,6 +33,8 @@ const Sidebar: React.FC = () => {
   const connectToServer = useConnectionStore((s) => s.connectToServer)
   const disconnectFromServer = useConnectionStore((s) => s.disconnectFromServer)
   const selectDb = useConnectionStore((s) => s.selectDb)
+  const fetchDbSizes = useConnectionStore((s) => s.fetchDbSizes)
+  const dbSizes = useConnectionStore((s) => s.dbSizes)
   const addedDatabases = useConnectionStore((s) => s.addedDatabases)
   const addDatabase = useConnectionStore((s) => s.addDatabase)
   const removeDatabase = useConnectionStore((s) => s.removeDatabase)
@@ -51,6 +54,10 @@ const Sidebar: React.FC = () => {
   const [dbDialogMode, setDbDialogMode] = useState<'add' | 'edit'>('add')
   const [dbDialogInitialDbNumber, setDbDialogInitialDbNumber] = useState<number | undefined>(undefined)
   const [dbDialogInitialAlias, setDbDialogInitialAlias] = useState<string | undefined>(undefined)
+
+  // Database selector state
+  const [dbSelectorOpen, setDbSelectorOpen] = useState(false)
+  const [dbSelectorConnId, setDbSelectorConnId] = useState<string | null>(null)
 
   // Track previously connected IDs to detect new connections
   const prevConnectedRef = useRef<Set<string>>(new Set())
@@ -100,6 +107,12 @@ const Sidebar: React.FC = () => {
     setDbDialogInitialAlias(alias)
     setDbDialogOpen(true)
   }, [])
+
+  const handleOpenDbSelector = useCallback((connId: string) => {
+    setDbSelectorConnId(connId)
+    setDbSelectorOpen(true)
+    void fetchDbSizes(connId)
+  }, [fetchDbSizes])
 
   const handleDbDialogConfirm = useCallback(
     (dbNumber: number, alias: string) => {
@@ -155,19 +168,16 @@ const Sidebar: React.FC = () => {
 
   return (
     <aside className="sidebar">
-      {/* Traffic light spacer */}
-      <div style={{ height: 40, flexShrink: 0 }} />
-
-      {/* New Connection button */}
       <div className="sidebar-header">
-        <button className="btn btn-primary btn-sm" style={{ width: '100%' }} onClick={openConnectionForm}>
+        <div className="sidebar-title">{t('sidebar.connections')}</div>
+        <button
+          className="icon-button sidebar-add-button"
+          onClick={openConnectionForm}
+          title={t('sidebar.newConnection')}
+        >
           <Plus size={14} />
-          {t('sidebar.newConnection')}
         </button>
       </div>
-
-      {/* Connections list */}
-      <div className="sidebar-group-title">{t('sidebar.connections')}</div>
 
       <div className="sidebar-list">
         {connections.length === 0 && (
@@ -179,14 +189,20 @@ const Sidebar: React.FC = () => {
         {connections.map((conn) => {
           const isConnected = conn.status === 'connected'
           const connAddedDbs = addedDatabases.filter((e) => e.connectionId === conn.config.id)
+          const hasActiveDb =
+            activeConnectionId === conn.config.id &&
+            isConnected &&
+            connAddedDbs.some((entry) => entry.dbNumber === currentDb)
+          const isActiveConnection = activeConnectionId === conn.config.id
+          const activeDbLabel = `db${currentDb}`
 
           return (
-            <div key={conn.config.id}>
+            <div key={conn.config.id} className="sidebar-connection-group">
               {/* Connection header with context menu */}
               <ContextMenu.Root>
                 <ContextMenu.Trigger asChild>
                   <div
-                    className="sidebar-item"
+                    className={`sidebar-item connection-item${isActiveConnection ? ' active' : ''}${hasActiveDb ? ' parent-active' : ''}`}
                     onClick={() => {
                       selectConnection(conn.config.id)
                     }}
@@ -200,6 +216,9 @@ const Sidebar: React.FC = () => {
                       <span className={statusDotClass(conn.status)} />
                     </span>
                     <span className="sidebar-item-label">{conn.config.name}</span>
+                    {isActiveConnection && isConnected && (
+                      <span className="connection-current-db">{activeDbLabel}</span>
+                    )}
                   </div>
                 </ContextMenu.Trigger>
 
@@ -220,6 +239,12 @@ const Sidebar: React.FC = () => {
                     <ContextMenu.Separator className="context-menu-separator" />
                     {conn.status === 'connected' ? (
                       <>
+                        <ContextMenu.Item
+                          className="context-menu-item"
+                          onSelect={() => handleOpenDbSelector(conn.config.id)}
+                        >
+                          <Database size={14} /> {t('sidebar.selectDatabase')}
+                        </ContextMenu.Item>
                         <ContextMenu.Item
                           className="context-menu-item"
                           onSelect={() => handleOpenDbDialog(conn.config.id)}
@@ -263,7 +288,6 @@ const Sidebar: React.FC = () => {
                       <ContextMenu.Trigger asChild>
                         <div
                           className={`sidebar-item connection-db-item${isCurrentDb ? ' active' : ''}`}
-                          style={{ paddingLeft: 28 }}
                           onClick={() => handleSelectDb(conn.config.id, entry.dbNumber)}
                           title={`db${entry.dbNumber}`}
                         >
@@ -271,6 +295,9 @@ const Sidebar: React.FC = () => {
                           <span className="sidebar-item-label">
                             {entry.alias}[db{entry.dbNumber}]
                           </span>
+                          {isCurrentDb && (
+                            <span className="connection-db-current">{t('sidebar.current')}</span>
+                          )}
                         </div>
                       </ContextMenu.Trigger>
 
@@ -312,18 +339,11 @@ const Sidebar: React.FC = () => {
         })}
       </div>
 
-      {/* View switcher (bottom) */}
-      <div style={{ display: 'flex', gap: 4, padding: '4px 12px', flexShrink: 0 }}>
+      <div className="sidebar-view-switcher">
         {viewButtons.map((btn) => (
           <button
             key={btn.key}
             className={`btn btn-ghost btn-sm${activeView === btn.key ? ' active' : ''}`}
-            style={{
-              flex: 1,
-              justifyContent: 'center',
-              backgroundColor: activeView === btn.key ? 'var(--bg-selected)' : undefined,
-              color: activeView === btn.key ? 'var(--text-accent)' : undefined,
-            }}
             onClick={() => setActiveView(btn.key)}
             title={btn.label}
           >
@@ -345,6 +365,37 @@ const Sidebar: React.FC = () => {
         initialAlias={dbDialogInitialAlias}
         onConfirm={handleDbDialogConfirm}
       />
+
+      {/* Database Selector Dialog */}
+      {dbSelectorConnId && (
+        <DbSelectorDialog
+          open={dbSelectorOpen}
+          onOpenChange={(open) => {
+            setDbSelectorOpen(open)
+            if (!open) setDbSelectorConnId(null)
+          }}
+          connectionName={connections.find((c) => c.config.id === dbSelectorConnId)?.config.name ?? ''}
+          currentDb={currentDb}
+          dbCounts={dbSizes[dbSelectorConnId] ?? {}}
+          onSelect={(dbNumber) => {
+            if (dbSelectorConnId) {
+              const alreadyAdded = addedDatabases.some(
+                (e) => e.connectionId === dbSelectorConnId && e.dbNumber === dbNumber
+              )
+
+              if (!alreadyAdded) {
+                addDatabase({
+                  connectionId: dbSelectorConnId,
+                  dbNumber,
+                  alias: `db${dbNumber}`,
+                })
+              }
+
+              handleSelectDb(dbSelectorConnId, dbNumber)
+            }
+          }}
+        />
+      )}
 
 
     </aside>

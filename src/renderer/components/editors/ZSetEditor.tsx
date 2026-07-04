@@ -32,7 +32,7 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
       try {
         const options: Record<string, unknown> = { type: 'zset', order: sortAsc ? 'asc' : 'desc' }
         if (append && cursor) options.cursor = cursor
-        const result = (await window.electronAPI.data.view(connectionId, keyName, options)) as {
+        const result = (await window.redixAPI.data.view(connectionId, keyName, options)) as {
           success: boolean
           data?: DataPage<ZSetMember>
         }
@@ -76,7 +76,7 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
     }
     setIsAdding(true)
     try {
-      const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+      const result = (await window.redixAPI.data.addField(connectionId, keyName, {
         member: newMember.trim(),
         score,
       })) as { success: boolean; error?: { message: string } }
@@ -104,7 +104,7 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
         return
       }
       try {
-        const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+        const result = (await window.redixAPI.data.addField(connectionId, keyName, {
           member,
           score,
           xx: true,
@@ -126,7 +126,7 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
   const handleDelete = useCallback(
     async (member: string) => {
       try {
-        const result = (await window.electronAPI.data.deleteField(connectionId, keyName, member)) as {
+        const result = (await window.redixAPI.data.deleteField(connectionId, keyName, member)) as {
           success: boolean
           error?: { message: string }
         }

@@ -76,6 +76,37 @@ function collectMatchingAncestors(root: TreeNode, term: string): Set<string> {
   return expanded
 }
 
+interface TreeRowData {
+  node: TreeNode
+  depth: number
+}
+
+function sortedTreeChildren(node: TreeNode): TreeNode[] {
+  return Array.from(node.children.values()).sort((a, b) => {
+    if (a.isLeaf !== b.isLeaf) return a.isLeaf ? 1 : -1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+function flattenTree(root: TreeNode, expandedPaths: Set<string>): TreeRowData[] {
+  const rows: TreeRowData[] = []
+
+  function visit(node: TreeNode, depth: number): void {
+    rows.push({ node, depth })
+    if (!node.isLeaf && expandedPaths.has(node.fullPath)) {
+      for (const child of sortedTreeChildren(node)) {
+        visit(child, depth + 1)
+      }
+    }
+  }
+
+  for (const child of sortedTreeChildren(root)) {
+    visit(child, 0)
+  }
+
+  return rows
+}
+
 // ─── Flat list row ────────────────────────────────────────────────
 
 interface RowProps {
@@ -120,6 +151,9 @@ function KeyRow({
       }}
       onClick={() => onSelect(item)}
     >
+      <span className={typeClass} style={{ marginRight: 8, flexShrink: 0 }}>
+        {item.type.toUpperCase()}
+      </span>
       <span
         style={{
           flex: 1,
@@ -132,9 +166,6 @@ function KeyRow({
         }}
       >
         {item.key}
-      </span>
-      <span className={typeClass} style={{ marginRight: 8, flexShrink: 0 }}>
-        {item.type}
       </span>
       <span
         style={{
@@ -151,11 +182,10 @@ function KeyRow({
   )
 }
 
-// ─── Tree node component ──────────────────────────────────────────
+// ─── Tree row ─────────────────────────────────────────────────────
 
-interface TreeNodeItemProps {
-  node: TreeNode
-  depth: number
+interface TreeRowProps {
+  rows: TreeRowData[]
   selectedKey: KeyInfo | null
   expandedPaths: Set<string>
   onToggle: (path: string) => void
@@ -163,24 +193,33 @@ interface TreeNodeItemProps {
   onLoadChildren: (prefix: string) => void
 }
 
-const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
-  node,
-  depth,
+function TreeRow({
+  ariaAttributes,
+  index,
+  style,
+  rows,
   selectedKey,
   expandedPaths,
   onToggle,
   onSelect,
   onLoadChildren,
-}) => {
+}: {
+  ariaAttributes: { 'aria-posinset': number; 'aria-setsize': number; role: 'listitem' }
+  index: number
+  style: CSSProperties
+  rows: TreeRowData[]
+  selectedKey: KeyInfo | null
+  expandedPaths: Set<string>
+  onToggle: (path: string) => void
+  onSelect: (key: KeyInfo) => void
+  onLoadChildren: (prefix: string) => void
+}): ReactElement | null {
+  const row = rows[index]
+  if (!row) return null
+
+  const { node, depth } = row
+  const t = useI18n((s) => s.t)
   const isExpanded = expandedPaths.has(node.fullPath)
-  const sortedChildren = useMemo(
-    () => Array.from(node.children.values()).sort((a, b) => {
-      // folders first, then alphabetical
-      if (a.isLeaf !== b.isLeaf) return a.isLeaf ? 1 : -1
-      return a.name.localeCompare(b.name)
-    }),
-    [node.children],
-  )
 
   const handleCopyPath = useCallback(() => {
     navigator.clipboard.writeText(node.fullPath).catch(() => { /* ignore */ })
@@ -191,82 +230,68 @@ const TreeNodeItem: React.FC<TreeNodeItemProps> = ({
   }, [node.fullPath, onLoadChildren])
 
   return (
-    <>
-      <ContextMenu.Root>
-        <ContextMenu.Trigger asChild>
-          <div
-            className={`tree-node${node.isLeaf && selectedKey?.key === node.fullPath ? ' selected' : ''}`}
-            style={{ paddingLeft: depth * 16 + 8 }}
-            onClick={() => {
-              if (node.isLeaf && node.keyInfo) {
-                onSelect(node.keyInfo)
-              } else {
-                onToggle(node.fullPath)
-              }
-            }}
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          {...ariaAttributes}
+          className={`tree-node${node.isLeaf && selectedKey?.key === node.fullPath ? ' selected' : ''}`}
+          style={{ ...style, paddingLeft: depth * 16 + 8, boxSizing: 'border-box' }}
+          onClick={() => {
+            if (node.isLeaf && node.keyInfo) {
+              onSelect(node.keyInfo)
+            } else {
+              onToggle(node.fullPath)
+            }
+          }}
+        >
+          {!node.isLeaf ? (
+            <span className="tree-toggle">
+              {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+            </span>
+          ) : (
+            <span className="tree-toggle" />
+          )}
+          {node.isLeaf ? (
+            <>
+              {node.keyInfo && (
+                <span className={`badge badge-${node.keyInfo.type}`} style={{ marginRight: 8, flexShrink: 0 }}>
+                  {node.keyInfo.type.toUpperCase()}
+                </span>
+              )}
+              <span className="tree-key-name">{node.name}</span>
+            </>
+          ) : (
+            <>
+              <Folder size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
+              <span className="tree-folder-name">{node.name}</span>
+              <span className="tree-count">{node.childCount}</span>
+            </>
+          )}
+        </div>
+      </ContextMenu.Trigger>
+
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="context-menu">
+          {!node.isLeaf && (
+            <>
+              <ContextMenu.Item
+                className="context-menu-item"
+                onSelect={handleLoadChildren}
+              >
+                {t('browser.loadChildren')}
+              </ContextMenu.Item>
+              <ContextMenu.Separator className="context-menu-separator" />
+            </>
+          )}
+          <ContextMenu.Item
+            className="context-menu-item"
+            onSelect={handleCopyPath}
           >
-            {!node.isLeaf ? (
-              <span className="tree-toggle">
-                {isExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
-              </span>
-            ) : (
-              <span className="tree-toggle" />
-            )}
-            {node.isLeaf ? (
-              <>
-                <span className="tree-key-name">{node.name}</span>
-                {node.keyInfo && (
-                  <span className={`badge badge-${node.keyInfo.type}`} style={{ marginLeft: 'auto' }}>
-                    {node.keyInfo.type}
-                  </span>
-                )}
-              </>
-            ) : (
-              <>
-                <Folder size={14} style={{ color: 'var(--text-tertiary)', flexShrink: 0 }} />
-                <span className="tree-folder-name">{node.name}</span>
-                <span className="tree-count">{node.childCount}</span>
-              </>
-            )}
-          </div>
-        </ContextMenu.Trigger>
-
-        <ContextMenu.Portal>
-          <ContextMenu.Content className="context-menu">
-            {!node.isLeaf && (
-              <>
-                <ContextMenu.Item
-                  className="context-menu-item"
-                  onSelect={handleLoadChildren}
-                >
-                  {useI18n.getState().t('browser.loadChildren')}
-                </ContextMenu.Item>
-                <ContextMenu.Separator className="context-menu-separator" />
-              </>
-            )}
-            <ContextMenu.Item
-              className="context-menu-item"
-              onSelect={handleCopyPath}
-            >
-              {useI18n.getState().t('browser.copyPath')}
-            </ContextMenu.Item>
-          </ContextMenu.Content>
-        </ContextMenu.Portal>
-      </ContextMenu.Root>
-
-      {!node.isLeaf && isExpanded && sortedChildren.map((child) => (
-        <TreeNodeItem
-          key={child.fullPath}
-          node={child}
-          depth={depth + 1}
-          selectedKey={selectedKey}
-          expandedPaths={expandedPaths}
-          onToggle={onToggle}
-          onSelect={onSelect}
-          onLoadChildren={onLoadChildren}
-        />
-      ))}
-    </>
+            {t('browser.copyPath')}
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   )
 }
 
@@ -295,7 +320,6 @@ const KeyBrowser: React.FC = () => {
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadingTriggeredRef = useRef(false)
-  const treeContainerRef = useRef<HTMLDivElement>(null)
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
 
@@ -334,15 +358,11 @@ const KeyBrowser: React.FC = () => {
     return manualExpanded
   }, [treeRoot, searchTerm, manualExpanded])
 
-  // Handle tree container scroll for pagination
-  const handleTreeScroll = useCallback(() => {
-    const container = treeContainerRef.current
-    if (!container || !hasMore || isLoading) return
-    const { scrollTop, scrollHeight, clientHeight } = container
-    if (scrollHeight - scrollTop - clientHeight < 100) {
-      loadNextPage()
-    }
-  }, [hasMore, isLoading, loadNextPage])
+  const treeRows = useMemo(() => flattenTree(treeRoot, expandedPaths), [treeRoot, expandedPaths])
+
+  useEffect(() => {
+    loadingTriggeredRef.current = false
+  }, [viewMode, filteredKeys.length])
 
   // Debounced search
   const handleSearchChange = useCallback(
@@ -428,6 +448,18 @@ const KeyBrowser: React.FC = () => {
     [filteredKeys, selectedKey, handleSelectKey]
   )
 
+  const treeRowProps: TreeRowProps = useMemo(
+    () => ({
+      rows: treeRows,
+      selectedKey,
+      expandedPaths,
+      onToggle: handleToggleNode,
+      onSelect: handleSelectKey,
+      onLoadChildren: handleLoadChildren,
+    }),
+    [treeRows, selectedKey, expandedPaths, handleToggleNode, handleSelectKey, handleLoadChildren]
+  )
+
   // No connection selected
   if (!activeConnectionId || !activeConnection) {
     return (
@@ -440,12 +472,6 @@ const KeyBrowser: React.FC = () => {
       </div>
     )
   }
-
-  // Sort root children for tree view
-  const rootChildren = Array.from(treeRoot.children.values()).sort((a, b) => {
-    if (a.isLeaf !== b.isLeaf) return a.isLeaf ? 1 : -1
-    return a.name.localeCompare(b.name)
-  })
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
@@ -556,19 +582,15 @@ const KeyBrowser: React.FC = () => {
             style={{ height: '100%', width: '100%' }}
           />
         ) : (
-          <div className="tree-view" ref={treeContainerRef} onScroll={handleTreeScroll}>
-            {rootChildren.map((child) => (
-              <TreeNodeItem
-                key={child.fullPath}
-                node={child}
-                depth={0}
-                selectedKey={selectedKey}
-                expandedPaths={expandedPaths}
-                onToggle={handleToggleNode}
-                onSelect={handleSelectKey}
-                onLoadChildren={handleLoadChildren}
-              />
-            ))}
+          <div className="tree-view">
+            <List<TreeRowProps>
+              rowComponent={TreeRow}
+              rowProps={treeRowProps}
+              rowCount={treeRows.length}
+              rowHeight={APP_CONFIG.VIRTUAL_LIST_ROW_HEIGHT}
+              overscanCount={12}
+              style={{ flex: 1, minHeight: 0, width: '100%' }}
+            />
             <div className="tree-load-more">
               {hasMore ? (
                 <button className="btn btn-ghost btn-sm" onClick={loadNextPage} disabled={isLoading}>

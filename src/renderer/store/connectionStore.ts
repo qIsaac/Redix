@@ -63,7 +63,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   loadConnections: async () => {
     set({ isLoading: true, error: null })
     try {
-      const result = await window.electronAPI.connection.list()
+      const result = await window.redixAPI.connection.list()
       const data = result as { success: boolean; data?: unknown[]; error?: { message: string } }
       if (data.success && data.data) {
         // 兼容处理：如果返回的是 ConnectionConfig[]，转换为 ConnectionInfo[]
@@ -84,7 +84,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   addConnection: async (config) => {
     set({ error: null })
     try {
-      const result = await window.electronAPI.connection.add(config)
+      const result = await window.redixAPI.connection.add(config)
       const data = result as { success: boolean; data?: ConnectionInfo; error?: { message: string } }
       if (data.success) {
         // 不管 data 是否有值，都重新加载列表
@@ -100,7 +100,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   updateConnection: async (config) => {
     set({ error: null })
     try {
-      const result = await window.electronAPI.connection.update(config)
+      const result = await window.redixAPI.connection.update(config)
       const data = result as { success: boolean; data?: ConnectionInfo; error?: { message: string } }
       if (data.success) {
         // 不管 data 是否有值，都重新加载列表
@@ -116,7 +116,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   deleteConnection: async (id) => {
     set({ error: null })
     try {
-      const result = await window.electronAPI.connection.delete(id)
+      const result = await window.redixAPI.connection.delete(id)
       const data = result as { success: boolean; error?: { message: string } }
       if (data.success) {
         set((state) => {
@@ -137,7 +137,10 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   selectConnection: (id) => {
-    set({ activeConnectionId: id, currentDb: 0 })
+    set((state) => ({
+      activeConnectionId: id,
+      currentDb: state.activeConnectionId === id ? state.currentDb : 0,
+    }))
   },
 
   updateConnectionStatus: (id, status, error) => {
@@ -150,7 +153,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
 
   testConnection: async (config) => {
     try {
-      return await window.electronAPI.connection.test(config)
+      return await window.redixAPI.connection.test(config)
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Unknown error' }
     }
@@ -160,9 +163,11 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     set({ error: null })
     get().updateConnectionStatus(id, 'connecting')
     try {
-      const result = await window.electronAPI.connection.connect(id)
+      const result = await window.redixAPI.connection.connect(id)
       const data = result as { success: boolean; error?: { message: string } }
-      if (!data.success) {
+      if (data.success) {
+        get().updateConnectionStatus(id, 'connected')
+      } else {
         get().updateConnectionStatus(id, 'error', data.error?.message)
       }
     } catch (err) {
@@ -173,7 +178,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   disconnectFromServer: async (id) => {
     set({ error: null })
     try {
-      const result = await window.electronAPI.connection.disconnect(id)
+      const result = await window.redixAPI.connection.disconnect(id)
       const data = result as { success: boolean; error?: { message: string } }
       if (data.success) {
         get().updateConnectionStatus(id, 'disconnected')
@@ -187,7 +192,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
 
   selectDb: async (connectionId, db) => {
     try {
-      const result = await window.electronAPI.connection.selectDb(connectionId, db)
+      const result = await window.redixAPI.connection.selectDb(connectionId, db)
       if (result.success) {
         set({ currentDb: db })
         return true
@@ -200,7 +205,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
 
   fetchDbSizes: async (connectionId) => {
     try {
-      const result = await window.electronAPI.connection.getDbSizes(connectionId)
+      const result = await window.redixAPI.connection.getDbSizes(connectionId)
       if (result.success && result.data) {
         set((state) => ({
           dbSizes: {
@@ -268,4 +273,3 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     })
   },
 }))
-

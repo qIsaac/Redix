@@ -192,7 +192,7 @@ const COMMAND_HINTS: Record<string, CommandHint> = {
   SADD: {
     usage: 'SADD key member [member ...]',
     description: 'Add members to a set.',
-    examples: ['SADD tags:post:1 redis electron typescript'],
+    examples: ['SADD tags:post:1 redis tauri typescript'],
     related: ['SMEMBERS', 'SREM', 'SISMEMBER'],
   },
   SMEMBERS: {
@@ -362,7 +362,7 @@ const copyTextWithFallback = (text: string): void => {
   if (!text) return
 
   try {
-    window.api?.clipboard?.writeText(text)
+    window.redixAPI?.clipboard?.writeText(text)
     return
   } catch {
     // Fall through to browser clipboard strategies.
@@ -665,7 +665,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
       isExecutingRef.current = true
       try {
-        const response = (await window.api.cli.execute(connId, trimmed)) as IPCResponse<CLIResult>
+        const response = (await window.redixAPI.cli.execute(connId, trimmed)) as IPCResponse<CLIResult>
         if (response && response.success && response.data) {
           const cliResult = response.data
           if (cliResult.isWarning) {
@@ -733,11 +733,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
     termRef.current = term
     fitAddonRef.current = fitAddon
 
-    const isTerminalFocused = (): boolean => {
-      const element = term.element
-      const activeElement = document.activeElement
-      return !!element && !!activeElement && element.contains(activeElement)
-    }
+    // isTerminalFocused removed — no longer needed after deduplicating event handlers
 
     const insertPastedText = (text: string): void => {
       if (isExecutingRef.current) return
@@ -756,9 +752,19 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
     const pasteFromClipboard = (): void => {
       try {
-        const text = window.api?.clipboard?.readText()
-        if (text) {
-          insertPastedText(text)
+        const textOrPromise = window.redixAPI?.clipboard?.readText()
+        if (typeof textOrPromise === 'string' && textOrPromise) {
+          insertPastedText(textOrPromise)
+          return
+        }
+        if (textOrPromise && typeof textOrPromise !== 'string') {
+          textOrPromise.then(insertPastedText).catch(() => {
+            navigator.clipboard?.readText()
+              .then(insertPastedText)
+              .catch(() => {
+                // Ignore clipboard read failures; DOM paste remains as a fallback.
+              })
+          })
           return
         }
       } catch {
@@ -859,37 +865,16 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
     const handleCopy = (e: ClipboardEvent): void => {
       copyTerminalSelection(term, e)
     }
-    const handleCopyKeyDown = (e: KeyboardEvent): void => {
-      const isCopyShortcut = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'c'
-      if (isCopyShortcut && term.hasSelection()) {
-        copyTerminalSelection(term, e)
-      }
-    }
-    const handlePasteKeyDown = (e: KeyboardEvent): void => {
-      const isPasteShortcut = (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'v'
-      if (!isPasteShortcut || !isTerminalFocused()) return
-
-      e.preventDefault()
-      e.stopPropagation()
-      pasteFromClipboard()
-    }
     term.element?.addEventListener('copy', handleCopy)
-    document.addEventListener('copy', handleCopy, true)
-    document.addEventListener('keydown', handleCopyKeyDown, true)
-    document.addEventListener('keydown', handlePasteKeyDown, true)
 
-    // Handle paste via DOM paste event (Cmd+V / Ctrl+V triggers browser paste)
+    // Handle paste via DOM paste event (fallback for non-keyboard paste, e.g. Edit menu)
     const handlePaste = (e: ClipboardEvent): void => {
       e.preventDefault()
       e.stopPropagation()
       const text = e.clipboardData?.getData('text/plain')
       if (text) insertPastedText(text)
     }
-    const handleDocumentPaste = (e: ClipboardEvent): void => {
-      if (isTerminalFocused()) handlePaste(e)
-    }
     term.element?.addEventListener('paste', handlePaste)
-    document.addEventListener('paste', handleDocumentPaste, true)
 
     // Welcome message
     const isConnected = !!activeConnection && activeConnection.status === 'connected'
@@ -1034,11 +1019,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
     return () => {
       term.element?.removeEventListener('copy', handleCopy)
-      document.removeEventListener('copy', handleCopy, true)
-      document.removeEventListener('keydown', handleCopyKeyDown, true)
-      document.removeEventListener('keydown', handlePasteKeyDown, true)
       term.element?.removeEventListener('paste', handlePaste)
-      document.removeEventListener('paste', handleDocumentPaste, true)
       resizeObserver.disconnect()
       term.dispose()
       termRef.current = null

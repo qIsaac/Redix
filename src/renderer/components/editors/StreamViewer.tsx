@@ -28,7 +28,7 @@ const StreamViewer: React.FC<StreamViewerProps> = ({ connectionId, keyName }) =>
       try {
         const options: Record<string, unknown> = { type: 'stream' }
         if (append && cursor) options.cursor = cursor
-        const result = (await window.electronAPI.data.view(connectionId, keyName, options)) as {
+        const result = (await window.redixAPI.data.view(connectionId, keyName, options)) as {
           success: boolean
           data?: DataPage<StreamEntry> & { consumerGroups?: string[] }
         }
@@ -89,7 +89,7 @@ const StreamViewer: React.FC<StreamViewerProps> = ({ connectionId, keyName }) =>
     }
     setIsAdding(true)
     try {
-      const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+      const result = (await window.redixAPI.data.addField(connectionId, keyName, {
         fields: fieldsObj,
       })) as { success: boolean; error?: { message: string } }
       if (result.success) {

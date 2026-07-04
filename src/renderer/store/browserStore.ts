@@ -45,7 +45,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   startScan: async (connectionId: string, pattern?: string) => {
     set({ isLoading: true, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId })
     try {
-      const result = await window.electronAPI.scan.start(connectionId, pattern) as {
+      const result = await window.redixAPI.scan.start(connectionId, pattern) as {
         success: boolean
         data?: ScanResult & { sessionId?: string }
         error?: { message: string }
@@ -78,7 +78,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
         set({ isLoading: false })
         return
       }
-      const result = await window.electronAPI.scan.next(sessionId, connectionId) as {
+      const result = await window.redixAPI.scan.next(sessionId, connectionId) as {
         success: boolean
         data?: ScanResult & { sessionId?: string }
         error?: { message: string }
@@ -108,7 +108,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
     }
     set({ isLoading: true, keys: [], selectedKey: null, hasMore: false, totalScanned: 0 })
     try {
-      const result = await window.electronAPI.scan.search(connectionId, pattern) as {
+      const result = await window.redixAPI.scan.search(connectionId, pattern) as {
         success: boolean
         data?: ScanResult
         error?: { message: string }
@@ -131,11 +131,12 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   },
 
   scanWithPrefix: async (connectionId: string, prefix: string) => {
-    const existingKeys = get().keys
+    const { isLoading, keys: existingKeys } = get()
+    if (isLoading) return
     set({ isLoading: true })
     try {
       const pattern = `${prefix}:*`
-      const result = await window.electronAPI.scan.start(connectionId, pattern) as {
+      const result = await window.redixAPI.scan.start(connectionId, pattern) as {
         success: boolean
         data?: ScanResult & { sessionId?: string }
         error?: { message: string }
@@ -174,7 +175,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
 
   deleteKey: async (connectionId: string, key: string) => {
     try {
-      const result = await window.electronAPI.key.delete(connectionId, key) as {
+      const result = await window.redixAPI.key.delete(connectionId, key) as {
         success: boolean
         error?: { message: string }
       }
@@ -191,7 +192,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
 
   renameKey: async (connectionId: string, key: string, newKey: string) => {
     try {
-      const result = await window.electronAPI.key.rename(connectionId, key, newKey) as {
+      const result = await window.redixAPI.key.rename(connectionId, key, newKey) as {
         success: boolean
         error?: { message: string }
       }
@@ -210,7 +211,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
 
   setKeyTTL: async (connectionId: string, key: string, ttl: number) => {
     try {
-      const result = await window.electronAPI.key.setTTL(connectionId, key, ttl) as {
+      const result = await window.redixAPI.key.setTTL(connectionId, key, ttl) as {
         success: boolean
         error?: { message: string }
       }

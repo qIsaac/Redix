@@ -33,7 +33,7 @@ const ListEditor: React.FC<ListEditorProps> = ({ connectionId, keyName }) => {
       try {
         const currentOffset = append ? offset : 0
         const options: Record<string, unknown> = { type: 'list', offset: currentOffset, count: pageSize }
-        const result = (await window.electronAPI.data.view(connectionId, keyName, options)) as {
+        const result = (await window.redixAPI.data.view(connectionId, keyName, options)) as {
           success: boolean
           data?: DataPage<string>
         }
@@ -71,7 +71,7 @@ const ListEditor: React.FC<ListEditorProps> = ({ connectionId, keyName }) => {
     if (!newItemValue.trim() && newItemValue === '') return
     setIsAdding(true)
     try {
-      const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+      const result = (await window.redixAPI.data.addField(connectionId, keyName, {
         position: pushSide,
         value: newItemValue,
       })) as { success: boolean; error?: { message: string } }
@@ -93,7 +93,7 @@ const ListEditor: React.FC<ListEditorProps> = ({ connectionId, keyName }) => {
   const handleDelete = useCallback(
     async (index: number) => {
       try {
-        const result = (await window.electronAPI.data.deleteField(connectionId, keyName, String(index))) as {
+        const result = (await window.redixAPI.data.deleteField(connectionId, keyName, String(index))) as {
           success: boolean
           error?: { message: string }
         }
@@ -114,7 +114,7 @@ const ListEditor: React.FC<ListEditorProps> = ({ connectionId, keyName }) => {
   const handleEditSave = useCallback(
     async (index: number) => {
       try {
-        const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+        const result = (await window.redixAPI.data.addField(connectionId, keyName, {
           index,
           value: editValue,
         })) as { success: boolean; error?: { message: string } }

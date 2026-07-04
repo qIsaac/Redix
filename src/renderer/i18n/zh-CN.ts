@@ -6,10 +6,12 @@ const zhCN: Record<string, string> = {
   'sidebar.editConnection': '\u7F16\u8F91\u8FDE\u63A5',
   'sidebar.copyConnectionName': '\u590D\u5236\u8FDE\u63A5\u540D\u79F0',
   'sidebar.addDatabase': '\u6DFB\u52A0\u6570\u636E\u5E93',
+  'sidebar.selectDatabase': '\u9009\u62E9\u6570\u636E\u5E93',
   'sidebar.disconnect': '\u65AD\u5F00\u8FDE\u63A5',
   'sidebar.connect': '\u8FDE\u63A5',
   'sidebar.delete': '\u5220\u9664',
   'sidebar.select': '\u9009\u62E9',
+  'sidebar.current': '\u5F53\u524D',
   'sidebar.edit': '\u7F16\u8F91',
   'sidebar.remove': '\u79FB\u9664',
   'sidebar.browser': '\u6D4F\u89C8\u5668',
@@ -192,6 +194,14 @@ const zhCN: Record<string, string> = {
   'dbDialog.save': '\u4FDD\u5B58',
   'dbDialog.add': '\u6DFB\u52A0',
 
+  // Database Selector
+  'dbSelector.selectDatabase': '\u9009\u62E9\u6570\u636E\u5E93',
+  'dbSelector.selectDesc': '\u4ECE\u8FDE\u63A5 \u201C{name}\u201D \u4E2D\u9009\u62E9\u6570\u636E\u5E93',
+  'dbSelector.searchPlaceholder': '\u641C\u7D22\u6570\u636E\u5E93...',
+  'dbSelector.noResults': '\u6CA1\u6709\u627E\u5230\u6570\u636E\u5E93',
+  'dbSelector.databaseLabel': '\u6570\u636E\u5E93 {num}',
+  'dbSelector.pageInfo': '{current}/{total} ({start}-{end}/\u5171{totalItems})',
+
   // Terminal
   'terminal.welcome': '\u6B22\u8FCE\u4F7F\u7528 Redix \u547D\u4EE4\u884C',
   'terminal.helpHint': "\u8F93\u5165 'help' \u67E5\u770B\u547D\u4EE4\uFF0C'tips' \u67E5\u770B\u667A\u80FD\u63D0\u793A\uFF0C\u6216\u6309 Tab \u83B7\u53D6\u5EFA\u8BAE\u3002",
@@ -275,6 +285,11 @@ const zhCN: Record<string, string> = {
   'toast.stringUpdated': '\u5B57\u7B26\u4E32\u503C\u5DF2\u66F4\u65B0',
   'toast.couldNotLoad': '\u65E0\u6CD5\u52A0\u8F7D\u5B57\u7B26\u4E32\u503C',
   'toast.couldNotUpdate': '\u65E0\u6CD5\u66F4\u65B0\u5B57\u7B26\u4E32\u503C',
+
+  // Common
+  'common.prev': '\u4E0A\u4E00\u9875',
+  'common.next': '\u4E0B\u4E00\u9875',
+  'common.close': '\u5173\u95ED',
 }
 
 export default zhCN

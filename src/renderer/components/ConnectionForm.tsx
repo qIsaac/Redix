@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactElement, type FormEvent } from 'react'
+import { useState, useEffect, useCallback, useRef, type ReactElement, type FormEvent } from 'react'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Server, Plus, X, Loader2, Check, AlertCircle } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
@@ -52,9 +52,11 @@ export default function ConnectionForm(): ReactElement {
   const [testing, setTesting] = useState(false)
   const [testResult, setTestResult] = useState<{ success: boolean; error?: string } | null>(null)
   const [saving, setSaving] = useState(false)
+  const testRunRef = useRef(0)
 
   // Populate form when editing
   useEffect(() => {
+    testRunRef.current += 1
     if (editingConnection) {
       const c = editingConnection
       setForm({
@@ -79,6 +81,8 @@ export default function ConnectionForm(): ReactElement {
       setForm({ ...defaultForm })
     }
     setErrors({})
+    setTesting(false)
+    setSaving(false)
     setTestResult(null)
   }, [editingConnection, showConnectionForm])
 
@@ -145,13 +149,18 @@ export default function ConnectionForm(): ReactElement {
       setErrors(errs)
       return
     }
+    const runId = ++testRunRef.current
     setTesting(true)
     setTestResult(null)
     try {
       const result = await testConnection(buildConfig())
-      setTestResult(result)
+      if (runId === testRunRef.current) {
+        setTestResult(result)
+      }
     } finally {
-      setTesting(false)
+      if (runId === testRunRef.current) {
+        setTesting(false)
+      }
     }
   }
 
@@ -253,7 +262,7 @@ export default function ConnectionForm(): ReactElement {
     >
       <Dialog.Portal>
         <Dialog.Overlay className="dialog-overlay" />
-        <Dialog.Content className="dialog" style={{ maxWidth: 520 }}>
+        <Dialog.Content className="dialog" style={{ width: 520, maxWidth: 'calc(100vw - 32px)' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
             <Dialog.Title className="dialog-title" style={{ marginBottom: 0, display: 'flex', alignItems: 'center', gap: 8 }}>
               <Server size={18} />

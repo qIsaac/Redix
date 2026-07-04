@@ -6,10 +6,12 @@ const en: Record<string, string> = {
   'sidebar.editConnection': 'Edit Connection',
   'sidebar.copyConnectionName': 'Copy Connection Name',
   'sidebar.addDatabase': 'Add Database',
+  'sidebar.selectDatabase': 'Select Database',
   'sidebar.disconnect': 'Disconnect',
   'sidebar.connect': 'Connect',
   'sidebar.delete': 'Delete',
   'sidebar.select': 'Select',
+  'sidebar.current': 'Current',
   'sidebar.edit': 'Edit',
   'sidebar.remove': 'Remove',
   'sidebar.browser': 'Browser',
@@ -192,6 +194,14 @@ const en: Record<string, string> = {
   'dbDialog.save': 'Save',
   'dbDialog.add': 'Add',
 
+  // Database Selector
+  'dbSelector.selectDatabase': 'Select Database',
+  'dbSelector.selectDesc': 'Choose a database from connection \u201c{name}\u201d',
+  'dbSelector.searchPlaceholder': 'Search databases...',
+  'dbSelector.noResults': 'No databases found',
+  'dbSelector.databaseLabel': 'Database {num}',
+  'dbSelector.pageInfo': '{current}/{total} ({start}-{end} of {totalItems})',
+
   // Terminal
   'terminal.welcome': 'Welcome to Redix CLI',
   'terminal.helpHint': "Type 'help' for commands, 'tips' for smart hints, or press Tab for suggestions.",
@@ -275,6 +285,11 @@ const en: Record<string, string> = {
   'toast.stringUpdated': 'String value updated',
   'toast.couldNotLoad': 'Could not load string value',
   'toast.couldNotUpdate': 'Could not update string value',
+
+  // Common
+  'common.prev': 'Previous',
+  'common.next': 'Next',
+  'common.close': 'Close',
 }
 
 export default en

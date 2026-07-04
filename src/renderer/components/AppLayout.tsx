@@ -51,46 +51,11 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
   const activeConnection = connections.find((c) => c.config.id === activeConnectionId) ?? null
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-      {/* Title Bar */}
-      <div
-        className="titlebar-drag-region"
-        style={{
-          height: 'var(--titlebar-height)',
-          minHeight: 'var(--titlebar-height)',
-          display: 'flex',
-          alignItems: 'center',
-          paddingLeft: 80, // traffic light space
-          backgroundColor: 'var(--bg-sidebar)',
-          borderBottom: '1px solid var(--border-color)',
-          fontSize: 'var(--font-size-sm)',
-          fontWeight: 500,
-          color: 'var(--text-secondary)',
-          userSelect: 'none',
-        }}
-      >
-        <span>Redix</span>
-        <div className="titlebar-lang-switch">
-          <button
-            className={`lang-btn${locale === 'en' ? ' active' : ''}`}
-            onClick={() => setLocale('en')}
-          >
-            EN
-          </button>
-          <button
-            className={`lang-btn${locale === 'zh-CN' ? ' active' : ''}`}
-            onClick={() => setLocale('zh-CN')}
-          >
-            中文
-          </button>
-        </div>
-      </div>
-
-      {/* Body: Sidebar + Main */}
-      <div style={{ flex: 1, display: 'flex', overflow: 'hidden' }}>
+    <div className="app-shell">
+      <div className="app-body">
         <Sidebar />
 
-        <main style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+        <main className="app-main">
           {activeView === 'terminal' ? (
             children ?? null
           ) : activeConnection ? (
@@ -119,7 +84,6 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
         </main>
       </div>
 
-      {/* Status Bar */}
       <div className="statusbar">
         {activeConnection ? (
           <>
@@ -148,6 +112,20 @@ const AppLayout: React.FC<AppLayoutProps> = ({ children }) => {
             <div style={{ flex: 1 }} />
           </>
         )}
+        <div className="titlebar-lang-switch">
+          <button
+            className={`lang-btn${locale === 'en' ? ' active' : ''}`}
+            onClick={() => setLocale('en')}
+          >
+            EN
+          </button>
+          <button
+            className={`lang-btn${locale === 'zh-CN' ? ' active' : ''}`}
+            onClick={() => setLocale('zh-CN')}
+          >
+            中文
+          </button>
+        </div>
       </div>
     </div>
   )

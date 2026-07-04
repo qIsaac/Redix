@@ -93,7 +93,7 @@ const ServerMonitor: React.FC = () => {
     if (!activeConnectionId) return
     setIsLoadingMetrics(true)
     try {
-      const res = (await window.electronAPI.server.metrics(activeConnectionId)) as IPCResponse<ServerMetrics>
+      const res = (await window.redixAPI.server.metrics(activeConnectionId)) as IPCResponse<ServerMetrics>
       if (res.success && res.data) {
         setMetrics(res.data)
         setError(null)
@@ -110,7 +110,7 @@ const ServerMonitor: React.FC = () => {
   const fetchInfo = useCallback(async () => {
     if (!activeConnectionId) return
     try {
-      const res = (await window.electronAPI.server.info(activeConnectionId)) as IPCResponse<string>
+      const res = (await window.redixAPI.server.info(activeConnectionId)) as IPCResponse<string>
       if (res.success && res.data) {
         setInfoData(parseInfoString(res.data))
       }
@@ -123,7 +123,7 @@ const ServerMonitor: React.FC = () => {
     if (!activeConnectionId) return
     setIsLoadingSlowlog(true)
     try {
-      const res = (await window.electronAPI.server.slowlog(activeConnectionId, 20)) as IPCResponse<SlowLogEntry[]>
+      const res = (await window.redixAPI.server.slowlog(activeConnectionId, 20)) as IPCResponse<SlowLogEntry[]>
       if (res.success && res.data) {
         setSlowLogs(res.data)
       }

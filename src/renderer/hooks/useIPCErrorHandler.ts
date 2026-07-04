@@ -35,7 +35,7 @@ function resolveErrorMessage(code: string | undefined, fallback: string): string
  *
  * ```ts
  * const { data, loading, error } = useIPCErrorHandler(
- *   useMemo(() => window.electronAPI.redis.ping(connId), [connId])
+ *   useMemo(() => window.redixAPI.connection.getStatus(connId), [connId])
  * )
  * ```
  */

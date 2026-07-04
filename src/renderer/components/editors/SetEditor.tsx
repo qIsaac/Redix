@@ -29,7 +29,7 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
       try {
         const options: Record<string, unknown> = { type: 'set' }
         if (append && cursor) options.cursor = cursor
-        const result = (await window.electronAPI.data.view(connectionId, keyName, options)) as {
+        const result = (await window.redixAPI.data.view(connectionId, keyName, options)) as {
           success: boolean
           data?: DataPage<string>
         }
@@ -73,7 +73,7 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
     if (!newMember.trim()) return
     setIsAdding(true)
     try {
-      const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+      const result = (await window.redixAPI.data.addField(connectionId, keyName, {
         member: newMember.trim(),
       })) as { success: boolean; error?: { message: string } }
       if (result.success) {
@@ -94,7 +94,7 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
   const handleDelete = useCallback(
     async (member: string) => {
       try {
-        const result = (await window.electronAPI.data.deleteField(connectionId, keyName, member)) as {
+        const result = (await window.redixAPI.data.deleteField(connectionId, keyName, member)) as {
           success: boolean
           error?: { message: string }
         }

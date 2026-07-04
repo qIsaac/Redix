@@ -1,5 +1,7 @@
 import type { ConnectionConfig } from '../shared/types'
 
+type Unsubscribe = () => void
+
 interface ConnectionAPI {
   list: () => Promise<unknown>
   add: (config: ConnectionConfig) => Promise<unknown>
@@ -11,7 +13,7 @@ interface ConnectionAPI {
   getStatus: (id: string) => Promise<unknown>
   selectDb: (connectionId: string, db: number) => Promise<{ success: boolean; data?: { db: number }; error?: { message: string } }>
   getDbSizes: (connectionId: string) => Promise<{ success: boolean; data?: Record<string, number>; error?: { message: string } }>
-  onStatusChanged: (callback: (data: { id: string; status: string; error?: string }) => void) => void
+  onStatusChanged: (callback: (data: { id: string; status: string; error?: string }) => void) => Unsubscribe
 }
 
 interface ScanAPI {
@@ -42,17 +44,17 @@ interface CLIAPI {
 
 interface ClipboardAPI {
   writeText: (text: string) => void
-  readText: () => string
+  readText: () => string | Promise<string>
 }
 
 interface ServerAPI {
   info: (connectionId: string) => Promise<unknown>
   metrics: (connectionId: string) => Promise<unknown>
   slowlog: (connectionId: string, count?: number) => Promise<unknown>
-  onMetricsUpdated: (callback: (data: unknown) => void) => void
+  onMetricsUpdated: (callback: (data: unknown) => void) => Unsubscribe
 }
 
-interface ElectronAPI {
+interface RedixAPI {
   connection: ConnectionAPI
   connections: ConnectionAPI
   scan: ScanAPI
@@ -67,8 +69,7 @@ interface ElectronAPI {
 
 declare global {
   interface Window {
-    electronAPI: ElectronAPI
-    api: ElectronAPI
+    redixAPI: RedixAPI
   }
 }
 

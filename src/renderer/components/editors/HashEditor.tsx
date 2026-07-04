@@ -31,7 +31,7 @@ const HashEditor: React.FC<HashEditorProps> = ({ connectionId, keyName }) => {
       try {
         const options: Record<string, unknown> = { type: 'hash' }
         if (append && cursor) options.cursor = cursor
-        const result = (await window.electronAPI.data.view(connectionId, keyName, options)) as {
+        const result = (await window.redixAPI.data.view(connectionId, keyName, options)) as {
           success: boolean
           data?: DataPage<HashField>
         }
@@ -60,7 +60,7 @@ const HashEditor: React.FC<HashEditorProps> = ({ connectionId, keyName }) => {
     if (!newField.trim()) return
     setIsAdding(true)
     try {
-      const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+      const result = (await window.redixAPI.data.addField(connectionId, keyName, {
         field: newField.trim(),
         value: newValue,
       })) as { success: boolean; error?: { message: string } }
@@ -83,7 +83,7 @@ const HashEditor: React.FC<HashEditorProps> = ({ connectionId, keyName }) => {
   const handleDeleteField = useCallback(
     async (field: string) => {
       try {
-        const result = (await window.electronAPI.data.deleteField(connectionId, keyName, field)) as {
+        const result = (await window.redixAPI.data.deleteField(connectionId, keyName, field)) as {
           success: boolean
           error?: { message: string }
         }
@@ -104,7 +104,7 @@ const HashEditor: React.FC<HashEditorProps> = ({ connectionId, keyName }) => {
   const handleEditSave = useCallback(
     async (field: string) => {
       try {
-        const result = (await window.electronAPI.data.addField(connectionId, keyName, {
+        const result = (await window.redixAPI.data.addField(connectionId, keyName, {
           field,
           value: editValue,
         })) as { success: boolean; error?: { message: string } }
