@@ -17,7 +17,7 @@ interface ConnectionAPI {
 }
 
 interface ScanAPI {
-  start: (connectionId: string, pattern?: string, typeFilter?: string) => Promise<unknown>
+  start: (connectionId: string, pattern?: string, typeFilter?: string, db?: number) => Promise<unknown>
   next: (sessionId: string, connectionId?: string) => Promise<unknown>
   search: (connectionId: string, pattern: string) => Promise<unknown>
   cancel: (sessionId: string) => Promise<unknown>
@@ -39,7 +39,7 @@ interface DataAPI {
 }
 
 interface CLIAPI {
-  execute: (connectionId: string, command: string) => Promise<unknown>
+  execute: (connectionId: string, command: string, confirmed?: boolean) => Promise<unknown>
 }
 
 interface ClipboardAPI {

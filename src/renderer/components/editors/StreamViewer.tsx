@@ -1,13 +1,47 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Plus, Save, X, ChevronDown, Hash } from 'lucide-react'
 import { useToastStore } from '../Toast'
-import type { DataPage, StreamEntry } from '../../../shared/types'
-import { formatDisplayValue } from '../../utils/format'
+import type { DataPage, StreamEntry, StreamFieldValue } from '../../../shared/types'
+import { formatBinarySummary, formatDisplayValue } from '../../utils/format'
 import { useI18n } from '../../i18n'
 
 interface StreamViewerProps {
   connectionId: string
   keyName: string
+}
+
+function formatStreamPart(text: string, isBinary?: boolean, length?: number, previewLength?: number): string {
+  if (isBinary) {
+    return formatBinarySummary(length, previewLength)
+  }
+  return formatDisplayValue(text)
+}
+
+function BinaryStreamPart({ hexDump }: { hexDump?: string }): React.ReactElement {
+  return (
+    <pre
+      className="mono"
+      style={{
+        margin: 0,
+        padding: '8px 10px',
+        maxHeight: 180,
+        overflow: 'auto',
+        border: '1px solid var(--border-color)',
+        borderRadius: 6,
+        backgroundColor: 'var(--bg-secondary)',
+        color: 'var(--text-primary)',
+        fontSize: 'var(--font-size-xs)',
+        lineHeight: 1.5,
+        whiteSpace: 'pre',
+      }}
+    >
+      {hexDump || '(empty)'}
+    </pre>
+  )
+}
+
+function streamFieldsFromRecord(fields: Record<string, string>): StreamFieldValue[] {
+  return Object.entries(fields).map(([field, value]) => ({ field, value }))
 }
 
 const StreamViewer: React.FC<StreamViewerProps> = ({ connectionId, keyName }) => {
@@ -190,12 +224,46 @@ const StreamViewer: React.FC<StreamViewerProps> = ({ connectionId, keyName }) =>
                   </tr>
                 </thead>
                 <tbody>
-                  {Object.entries(entry.fields).map(([k, v]) => (
-                    <tr key={k}>
-                      <td className="mono">{formatDisplayValue(k)}</td>
-                      <td className="mono">{formatDisplayValue(v)}</td>
-                    </tr>
-                  ))}
+                  {(entry.fieldValues ?? streamFieldsFromRecord(entry.fields)).map((field, index) => {
+                    if (field.fieldIsBinary || field.valueIsBinary) {
+                      return (
+                        <tr key={`${field.field}-${index}`}>
+                          <td
+                            colSpan={2}
+                            style={{
+                              padding: 12,
+                              whiteSpace: 'normal',
+                              overflow: 'visible',
+                              textOverflow: 'clip',
+                              maxWidth: 'none',
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <span className="mono" style={{ color: 'var(--text-secondary)', fontSize: 'var(--font-size-xs)' }}>
+                                  {formatStreamPart(field.field, field.fieldIsBinary, field.fieldLength, field.fieldPreviewLength)}
+                                </span>
+                                {field.fieldIsBinary && <BinaryStreamPart hexDump={field.fieldHexDump} />}
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                                <span className="mono" style={{ color: 'var(--text-primary)', fontSize: 'var(--font-size-sm)' }}>
+                                  {formatStreamPart(field.value, field.valueIsBinary, field.valueLength, field.valuePreviewLength)}
+                                </span>
+                                {field.valueIsBinary && <BinaryStreamPart hexDump={field.valueHexDump} />}
+                              </div>
+                            </div>
+                          </td>
+                        </tr>
+                      )
+                    }
+
+                    return (
+                      <tr key={`${field.field}-${index}`}>
+                        <td className="mono">{formatDisplayValue(field.field)}</td>
+                        <td className="mono">{formatDisplayValue(field.value)}</td>
+                      </tr>
+                    )
+                  })}
                 </tbody>
               </table>
             </div>

@@ -1,16 +1,22 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type ReactElement } from 'react'
 import { List } from 'react-window'
 import * as ContextMenu from '@radix-ui/react-context-menu'
-import { Search, RefreshCw, Filter, Key, List as ListIcon, FolderTree, ChevronRight, ChevronDown, Folder } from 'lucide-react'
+import * as Dialog from '@radix-ui/react-dialog'
+import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
+import { Search, RefreshCw, Filter, Key, List as ListIcon, FolderTree, ChevronRight, ChevronDown, Folder, Plus, X, Save } from 'lucide-react'
 import { useBrowserStore } from '../store/browserStore'
 import { useConnectionStore } from '../store/connectionStore'
 import { APP_CONFIG } from '../../shared/constants'
-import type { KeyInfo } from '../../shared/types'
+import type { IPCResponse, KeyInfo } from '../../shared/types'
 import { useI18n } from '../i18n'
+import { useToastStore } from './Toast'
 
 const KEY_TYPES = ['string', 'hash', 'list', 'set', 'zset', 'stream'] as const
+type KeyType = typeof KEY_TYPES[number]
 
 type ViewMode = 'list' | 'tree'
+
+const QUICK_ADD_TYPES: KeyType[] = ['string', 'list', 'hash', 'set', 'zset', 'stream']
 
 // ─── Tree data structures ────────────────────────────────────────
 
@@ -107,12 +113,151 @@ function flattenTree(root: TreeNode, expandedPaths: Set<string>): TreeRowData[] 
   return rows
 }
 
+function quickAddInitialValueFor(type: KeyType): unknown {
+  switch (type) {
+    case 'string':
+      return ''
+    case 'hash':
+      return { field: '' }
+    case 'list':
+      return ['']
+    case 'set':
+      return ['']
+    case 'zset':
+      return [{ score: 0, member: '' }]
+    case 'stream':
+      return { field: '' }
+  }
+}
+
+function isQuickAddValid(keyName: string): boolean {
+  return !!keyName.trim()
+}
+
+function QuickAddKeyDialog({
+  open,
+  type,
+  connectionId,
+  currentDb,
+  onOpenChange,
+  onCreated,
+}: {
+  open: boolean
+  type: KeyType | null
+  connectionId: string | null
+  currentDb: number
+  onOpenChange: (open: boolean) => void
+  onCreated: (key: KeyInfo) => void
+}): ReactElement | null {
+  const t = useI18n((s) => s.t)
+  const [keyName, setKeyName] = useState('')
+  const [saving, setSaving] = useState(false)
+
+  useEffect(() => {
+    if (!open) return
+    setKeyName('')
+    setSaving(false)
+  }, [open, type])
+
+  if (!type) return null
+
+  const valid = isQuickAddValid(keyName)
+
+  const handleSubmit = async (): Promise<void> => {
+    if (!connectionId || !valid || saving) return
+    const trimmedKey = keyName.trim()
+    setSaving(true)
+    try {
+      const infoBefore = await window.redixAPI.key.info(connectionId, trimmedKey) as IPCResponse<KeyInfo>
+      if (infoBefore.success && infoBefore.data && infoBefore.data.type !== 'none') {
+        useToastStore.getState().warning(t('quickAdd.exists'), trimmedKey)
+        return
+      }
+
+      const value = quickAddInitialValueFor(type)
+      const result = await window.redixAPI.key.add(connectionId, trimmedKey, type, value) as IPCResponse
+      if (!result.success) {
+        useToastStore.getState().error(t('quickAdd.createFailed'), result.error?.message)
+        return
+      }
+
+      const infoAfter = await window.redixAPI.key.info(connectionId, trimmedKey) as IPCResponse<KeyInfo>
+      const createdKey: KeyInfo = {
+        key: trimmedKey,
+        type,
+        ttl: -1,
+        memory: null,
+        connectionId,
+        db: currentDb,
+        ...(infoAfter.success && infoAfter.data ? infoAfter.data : {}),
+      }
+      useToastStore.getState().success(t('quickAdd.created'))
+      onCreated(createdKey)
+      onOpenChange(false)
+    } catch (error) {
+      useToastStore.getState().error(
+        t('quickAdd.createFailed'),
+        error instanceof Error ? error.message : String(error)
+      )
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const title = t('quickAdd.title', { type: t(`quickAdd.type.${type}`) })
+
+  return (
+    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+      <Dialog.Portal>
+        <Dialog.Overlay className="dialog-overlay" />
+        <Dialog.Content className="dialog" style={{ width: 440, maxWidth: 'calc(100vw - 32px)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+            <Dialog.Title className="dialog-title" style={{ marginBottom: 0, flex: 1 }}>
+              {title}
+            </Dialog.Title>
+            <Dialog.Close asChild>
+              <button className="btn btn-ghost btn-sm" aria-label={t('quickAdd.cancel')}>
+                <X size={14} />
+              </button>
+            </Dialog.Close>
+          </div>
+          <Dialog.Description className="dialog-description">{t('quickAdd.description')}</Dialog.Description>
+
+          <div className="dialog-field">
+            <label>{t('quickAdd.keyName')}</label>
+            <input
+              className="input"
+              value={keyName}
+              onChange={(event) => setKeyName(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter' && valid) void handleSubmit()
+              }}
+              autoFocus
+            />
+          </div>
+
+          <div className="dialog-actions">
+            <Dialog.Close asChild>
+              <button className="btn btn-secondary btn-sm">{t('quickAdd.cancel')}</button>
+            </Dialog.Close>
+            <button className="btn btn-primary btn-sm" onClick={handleSubmit} disabled={!valid || saving}>
+              <Save size={13} />
+              {saving ? t('quickAdd.creating') : t('quickAdd.create')}
+            </button>
+          </div>
+        </Dialog.Content>
+      </Dialog.Portal>
+    </Dialog.Root>
+  )
+}
+
 // ─── Flat list row ────────────────────────────────────────────────
 
 interface RowProps {
   keys: KeyInfo[]
   selectedKey: KeyInfo | null
   onSelect: (key: KeyInfo) => void
+  onCopyKey: (key: string) => void
 }
 
 function KeyRow({
@@ -122,6 +267,7 @@ function KeyRow({
   keys,
   selectedKey,
   onSelect,
+  onCopyKey,
 }: {
   ariaAttributes: { 'aria-posinset': number; 'aria-setsize': number; role: 'listitem' }
   index: number
@@ -129,56 +275,73 @@ function KeyRow({
   keys: KeyInfo[]
   selectedKey: KeyInfo | null
   onSelect: (key: KeyInfo) => void
+  onCopyKey: (key: string) => void
 }): ReactElement | null {
   const item = keys[index]
   if (!item) return null
 
+  const t = useI18n((s) => s.t)
   const isSelected = selectedKey?.key === item.key
   const typeClass = `badge badge-${item.type}`
 
   return (
-    <div
-      {...ariaAttributes}
-      style={{
-        ...style,
-        display: 'flex',
-        alignItems: 'center',
-        padding: '0 12px',
-        cursor: 'default',
-        backgroundColor: isSelected ? 'var(--bg-selected)' : undefined,
-        borderBottom: '1px solid var(--border-color)',
-        boxSizing: 'border-box',
-      }}
-      onClick={() => onSelect(item)}
-    >
-      <span className={typeClass} style={{ marginRight: 8, flexShrink: 0 }}>
-        {item.type.toUpperCase()}
-      </span>
-      <span
-        style={{
-          flex: 1,
-          overflow: 'hidden',
-          textOverflow: 'ellipsis',
-          whiteSpace: 'nowrap',
-          fontFamily: 'var(--font-mono)',
-          fontSize: 'var(--font-size-sm)',
-          color: 'var(--text-primary)',
-        }}
-      >
-        {item.key}
-      </span>
-      <span
-        style={{
-          fontSize: 'var(--font-size-xs)',
-          color: 'var(--text-tertiary)',
-          flexShrink: 0,
-          minWidth: 48,
-          textAlign: 'right',
-        }}
-      >
-        {item.ttl === -1 ? '—' : `${item.ttl}s`}
-      </span>
-    </div>
+    <ContextMenu.Root>
+      <ContextMenu.Trigger asChild>
+        <div
+          {...ariaAttributes}
+          style={{
+            ...style,
+            display: 'flex',
+            alignItems: 'center',
+            padding: '0 12px',
+            cursor: 'default',
+            backgroundColor: isSelected ? 'var(--bg-selected)' : undefined,
+            borderBottom: '1px solid var(--border-color)',
+            boxSizing: 'border-box',
+          }}
+          onClick={() => onSelect(item)}
+        >
+          <span className={typeClass} style={{ marginRight: 8, flexShrink: 0 }}>
+            {item.type.toUpperCase()}
+          </span>
+          <span
+            style={{
+              flex: 1,
+              overflow: 'hidden',
+              textOverflow: 'ellipsis',
+              whiteSpace: 'nowrap',
+              fontFamily: 'var(--font-mono)',
+              fontSize: 'var(--font-size-sm)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {item.key}
+          </span>
+          <span
+            style={{
+              fontSize: 'var(--font-size-xs)',
+              color: 'var(--text-tertiary)',
+              flexShrink: 0,
+              minWidth: 48,
+              textAlign: 'right',
+            }}
+          >
+            {item.ttl === -1 ? '—' : `${item.ttl}s`}
+          </span>
+        </div>
+      </ContextMenu.Trigger>
+
+      <ContextMenu.Portal>
+        <ContextMenu.Content className="context-menu">
+          <ContextMenu.Item
+            className="context-menu-item"
+            onSelect={() => onCopyKey(item.key)}
+          >
+            {t('browser.copyKey')}
+          </ContextMenu.Item>
+        </ContextMenu.Content>
+      </ContextMenu.Portal>
+    </ContextMenu.Root>
   )
 }
 
@@ -309,19 +472,20 @@ const KeyBrowser: React.FC = () => {
 
   const startScan = useBrowserStore((s) => s.startScan)
   const loadNextPage = useBrowserStore((s) => s.loadNextPage)
-  const searchKeys = useBrowserStore((s) => s.searchKeys)
   const scanWithPrefix = useBrowserStore((s) => s.scanWithPrefix)
   const selectKey = useBrowserStore((s) => s.selectKey)
   const setSearchTerm = useBrowserStore((s) => s.setSearchTerm)
   const setTypeFilter = useBrowserStore((s) => s.setTypeFilter)
 
   const activeConnectionId = useConnectionStore((s) => s.activeConnectionId)
+  const currentDb = useConnectionStore((s) => s.currentDb)
   const connections = useConnectionStore((s) => s.connections)
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const loadingTriggeredRef = useRef(false)
 
   const [viewMode, setViewMode] = useState<ViewMode>('list')
+  const [quickAddType, setQuickAddType] = useState<KeyType | null>(null)
 
   // Tree expanded state
   const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set())
@@ -329,13 +493,15 @@ const KeyBrowser: React.FC = () => {
   const activeConnection = connections.find((c) => c.config.id === activeConnectionId) ?? null
   const isConnected = activeConnection?.status === 'connected'
 
-  // Auto-start scan when connection becomes active
+  // Auto-start scan when connection becomes active or database changes
   useEffect(() => {
     if (activeConnectionId && isConnected) {
-      startScan(activeConnectionId)
+      // Clear manual expanded paths when switching databases
+      setManualExpanded(new Set())
+      startScan(activeConnectionId, searchTerm.trim() || undefined, typeFilter, currentDb)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeConnectionId, isConnected])
+  }, [activeConnectionId, isConnected, currentDb])
 
   // Filtered keys
   const filteredKeys = useMemo(() => {
@@ -372,33 +538,37 @@ const KeyBrowser: React.FC = () => {
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         if (activeConnectionId) {
-          searchKeys(activeConnectionId, value)
+          startScan(activeConnectionId, value.trim() || undefined, typeFilter, currentDb)
         }
       }, 300)
     },
-    [activeConnectionId, searchKeys, setSearchTerm]
+    [activeConnectionId, currentDb, startScan, setSearchTerm, typeFilter]
   )
 
   // Refresh
   const handleRefresh = useCallback(() => {
     if (activeConnectionId) {
-      startScan(activeConnectionId)
+      startScan(activeConnectionId, searchTerm.trim() || undefined, typeFilter, currentDb)
     }
-  }, [activeConnectionId, startScan])
+  }, [activeConnectionId, currentDb, searchTerm, startScan, typeFilter])
 
   // Type filter
   const handleTypeFilterChange = useCallback(
     (e: React.ChangeEvent<HTMLSelectElement>) => {
       const value = e.target.value
-      setTypeFilter(value === '' ? null : value)
+      const nextType = value === '' ? null : value
+      setTypeFilter(nextType)
+      if (activeConnectionId) {
+        startScan(activeConnectionId, searchTerm.trim() || undefined, nextType, currentDb)
+      }
     },
-    [setTypeFilter]
+    [activeConnectionId, currentDb, searchTerm, setTypeFilter, startScan]
   )
 
   // Detect scroll near bottom for prefetch (list mode only)
   const handleRowsRendered = useCallback(
     (_visibleRows: { startIndex: number; stopIndex: number }, allRows: { startIndex: number; stopIndex: number }) => {
-      if (!hasMore || isLoading) {
+      if (!hasMore || isLoading || typeFilter || searchTerm.trim()) {
         loadingTriggeredRef.current = false
         return
       }
@@ -409,7 +579,7 @@ const KeyBrowser: React.FC = () => {
         loadNextPage()
       }
     },
-    [hasMore, isLoading, filteredKeys.length, loadNextPage]
+    [hasMore, isLoading, typeFilter, searchTerm, filteredKeys.length, loadNextPage]
   )
 
   const handleSelectKey = useCallback(
@@ -418,6 +588,12 @@ const KeyBrowser: React.FC = () => {
     },
     [selectKey]
   )
+
+  const handleCopyKey = useCallback((key: string) => {
+    navigator.clipboard.writeText(key).catch(() => {
+      /* ignore */
+    })
+  }, [])
 
   const handleToggleNode = useCallback((path: string) => {
     setManualExpanded((prev) => {
@@ -433,7 +609,7 @@ const KeyBrowser: React.FC = () => {
 
   const handleLoadChildren = useCallback((prefix: string) => {
     if (activeConnectionId) {
-      scanWithPrefix(activeConnectionId, prefix)
+      scanWithPrefix(activeConnectionId, prefix, currentDb)
       // Auto-expand the node so children are visible after loading
       setManualExpanded((prev) => {
         const next = new Set(prev)
@@ -441,11 +617,27 @@ const KeyBrowser: React.FC = () => {
         return next
       })
     }
-  }, [activeConnectionId, scanWithPrefix])
+  }, [activeConnectionId, currentDb, scanWithPrefix])
+
+  const handleQuickCreated = useCallback(
+    (key: KeyInfo) => {
+      setSearchTerm('')
+      setTypeFilter(null)
+      useBrowserStore.setState((state) => {
+        const nextKey = { ...key, connectionId: activeConnectionId ?? key.connectionId, db: currentDb }
+        return {
+          keys: [nextKey, ...state.keys.filter((item) => item.key !== key.key)],
+          selectedKey: nextKey,
+          totalScanned: state.totalScanned + (state.keys.some((item) => item.key === key.key) ? 0 : 1),
+        }
+      })
+    },
+    [activeConnectionId, currentDb, setSearchTerm, setTypeFilter]
+  )
 
   const rowProps: RowProps = useMemo(
-    () => ({ keys: filteredKeys, selectedKey, onSelect: handleSelectKey }),
-    [filteredKeys, selectedKey, handleSelectKey]
+    () => ({ keys: filteredKeys, selectedKey, onSelect: handleSelectKey, onCopyKey: handleCopyKey }),
+    [filteredKeys, selectedKey, handleSelectKey, handleCopyKey]
   )
 
   const treeRowProps: TreeRowProps = useMemo(
@@ -474,6 +666,7 @@ const KeyBrowser: React.FC = () => {
   }
 
   return (
+    <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Toolbar */}
       <div
@@ -545,6 +738,31 @@ const KeyBrowser: React.FC = () => {
             <FolderTree size={14} />
           </button>
         </div>
+
+        <DropdownMenu.Root>
+          <DropdownMenu.Trigger asChild>
+            <button className="btn btn-ghost btn-sm" title={t('quickAdd.menuTitle')} disabled={!isConnected}>
+              <Plus size={14} />
+            </button>
+          </DropdownMenu.Trigger>
+          <DropdownMenu.Portal>
+            <DropdownMenu.Content className="context-menu" align="end" sideOffset={4}>
+              {QUICK_ADD_TYPES.map((type) => (
+                <DropdownMenu.Item
+                  key={type}
+                  className="context-menu-item"
+                  onSelect={() => setQuickAddType(type)}
+                >
+                  {t(`quickAdd.type.${type}`)}
+                </DropdownMenu.Item>
+              ))}
+              <DropdownMenu.Separator className="context-menu-separator" />
+              <DropdownMenu.Item className="context-menu-item" disabled>
+                {t('quickAdd.import')}
+              </DropdownMenu.Item>
+            </DropdownMenu.Content>
+          </DropdownMenu.Portal>
+        </DropdownMenu.Root>
 
         <button className="btn btn-ghost btn-sm" onClick={handleRefresh} title={t('browser.refresh')} disabled={isLoading}>
           <RefreshCw size={14} className={isLoading ? 'spinning' : ''} />
@@ -627,6 +845,17 @@ const KeyBrowser: React.FC = () => {
         </span>
       </div>
     </div>
+    <QuickAddKeyDialog
+      open={quickAddType != null}
+      type={quickAddType}
+      connectionId={activeConnectionId}
+      currentDb={currentDb}
+      onOpenChange={(open) => {
+        if (!open) setQuickAddType(null)
+      }}
+      onCreated={handleQuickCreated}
+    />
+    </>
   )
 }
 

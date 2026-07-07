@@ -19,28 +19,32 @@ const KeyDetail: React.FC = () => {
   const [showRenameDialog, setShowRenameDialog] = useState(false)
   const [newKeyName, setNewKeyName] = useState('')
   const ttlEditorRef = useRef<HTMLSpanElement>(null)
+  const targetMatches =
+    !!activeConnectionId &&
+    !!selectedKey &&
+    (!selectedKey.connectionId || selectedKey.connectionId === activeConnectionId)
 
   const handleTTLSave = useCallback(() => {
-    if (!activeConnectionId || !selectedKey) return
+    if (!activeConnectionId || !selectedKey || !targetMatches) return
     const parsed = parseInt(ttlValue, 10)
     if (!isNaN(parsed)) {
       setKeyTTL(activeConnectionId, selectedKey.key, parsed)
     }
     setEditingTTL(false)
-  }, [activeConnectionId, selectedKey, ttlValue, setKeyTTL])
+  }, [activeConnectionId, selectedKey, targetMatches, ttlValue, setKeyTTL])
 
   const handleDelete = useCallback(() => {
-    if (!activeConnectionId || !selectedKey) return
+    if (!activeConnectionId || !selectedKey || !targetMatches) return
     deleteKey(activeConnectionId, selectedKey.key)
     setShowDeleteConfirm(false)
-  }, [activeConnectionId, selectedKey, deleteKey])
+  }, [activeConnectionId, selectedKey, targetMatches, deleteKey])
 
   const handleRename = useCallback(() => {
-    if (!activeConnectionId || !selectedKey || !newKeyName.trim()) return
+    if (!activeConnectionId || !selectedKey || !targetMatches || !newKeyName.trim()) return
     renameKey(activeConnectionId, selectedKey.key, newKeyName.trim())
     setShowRenameDialog(false)
     setNewKeyName('')
-  }, [activeConnectionId, selectedKey, newKeyName, renameKey])
+  }, [activeConnectionId, selectedKey, targetMatches, newKeyName, renameKey])
 
   const handleCopyKey = useCallback(() => {
     if (selectedKey) {
@@ -188,7 +192,13 @@ const KeyDetail: React.FC = () => {
 
       {/* Editor Area */}
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
-        {activeConnectionId && selectedKey && renderEditor(activeConnectionId, selectedKey.type, selectedKey.key)}
+        {activeConnectionId && selectedKey && targetMatches && renderEditor(activeConnectionId, selectedKey.type, selectedKey.key)}
+        {!targetMatches && (
+          <div className="empty-state" style={{ height: 'auto', padding: '40px 0' }}>
+            <div className="empty-state-title">{t('detail.noKeySelected')}</div>
+            <div className="empty-state-description">{t('detail.noKeySelectedDesc')}</div>
+          </div>
+        )}
       </div>
 
       {/* Action Buttons */}
@@ -205,6 +215,7 @@ const KeyDetail: React.FC = () => {
         <div style={{ flex: 1 }} />
         <button
           className="btn btn-secondary btn-sm"
+          disabled={!targetMatches}
           onClick={() => {
             setNewKeyName(selectedKey.key)
             setShowRenameDialog(true)
@@ -213,7 +224,7 @@ const KeyDetail: React.FC = () => {
           <Edit3 size={13} />
           {t('detail.rename')}
         </button>
-        <button className="btn btn-danger btn-sm" onClick={() => setShowDeleteConfirm(true)}>
+        <button className="btn btn-danger btn-sm" disabled={!targetMatches} onClick={() => setShowDeleteConfirm(true)}>
           <Trash2 size={13} />
           {t('detail.delete')}
         </button>

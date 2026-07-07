@@ -136,7 +136,7 @@ const Sidebar: React.FC = () => {
       }
       const ok = await selectDb(connectionId, db)
       if (ok) {
-        startScan(connectionId)
+        startScan(connectionId, undefined, undefined, db)
       }
     },
     [activeConnectionId, selectConnection, selectDb, startScan]
@@ -149,7 +149,7 @@ const Sidebar: React.FC = () => {
       }
       const ok = await selectDb(connectionId, db)
       if (ok) {
-        startScan(connectionId)
+        startScan(connectionId, undefined, undefined, db)
       }
       setActiveView('browser')
       openBrowserCli()

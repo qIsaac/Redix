@@ -1,13 +1,44 @@
-import React, { useCallback, useEffect, useState } from 'react'
-import { Plus, Trash2, Save, X, ChevronDown, ArrowUp, ArrowDown } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { Plus, Trash2, Save, X, ChevronDown, ArrowUp, ArrowDown, Edit3 } from 'lucide-react'
 import { useToastStore } from '../Toast'
+import ConfirmDeleteDialog from '../ConfirmDeleteDialog'
 import type { DataPage, ZSetMember } from '../../../shared/types'
-import { formatDisplayValue } from '../../utils/format'
+import { formatBinarySummary, formatDisplayValue } from '../../utils/format'
 import { useI18n } from '../../i18n'
 
 interface ZSetEditorProps {
   connectionId: string
   keyName: string
+}
+
+function formatMemberValue(member: ZSetMember): string {
+  if (member.memberIsBinary) {
+    return formatBinarySummary(member.memberLength, member.memberPreviewLength)
+  }
+  return formatDisplayValue(member.member)
+}
+
+function BinaryZSetMember({ member }: { member: ZSetMember }): React.ReactElement {
+  return (
+    <pre
+      className="mono"
+      style={{
+        margin: 0,
+        padding: '8px 10px',
+        maxHeight: 220,
+        overflow: 'auto',
+        border: '1px solid var(--border-color)',
+        borderRadius: 6,
+        backgroundColor: 'var(--bg-secondary)',
+        color: 'var(--text-primary)',
+        fontSize: 'var(--font-size-xs)',
+        lineHeight: 1.5,
+        whiteSpace: 'pre',
+      }}
+    >
+      {member.memberHexDump || '(empty)'}
+    </pre>
+  )
 }
 
 const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
@@ -24,7 +55,11 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
   const [isAdding, setIsAdding] = useState(false)
   const [editingIndex, setEditingIndex] = useState<number | null>(null)
   const [editScore, setEditScore] = useState('')
-  const [deleteConfirm, setDeleteConfirm] = useState<number | null>(null)
+  const [editMemberValue, setEditMemberValue] = useState('')
+  const [deleteTarget, setDeleteTarget] = useState<ZSetMember | null>(null)
+  const [isSavingEdit, setIsSavingEdit] = useState(false)
+  const [isDeleting, setIsDeleting] = useState(false)
+  const editingRef = useRef<HTMLDivElement | null>(null)
 
   const loadData = useCallback(
     async (append: boolean) => {
@@ -53,7 +88,7 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
         setIsLoading(false)
       }
     },
-    [connectionId, keyName, cursor, sortAsc]
+    [connectionId, keyName, sortAsc]
   )
 
   useEffect(() => {
@@ -61,6 +96,22 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
     loadData(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connectionId, keyName, sortAsc])
+
+  useEffect(() => {
+    if (editingIndex == null) return
+
+    const handlePointerDown = (event: PointerEvent): void => {
+      const target = event.target
+      if (target instanceof Element && target.closest('[data-zset-editing="true"]')) return
+      if (target instanceof Node && editingRef.current?.contains(target)) return
+      setEditingIndex(null)
+    }
+
+    document.addEventListener('pointerdown', handlePointerDown)
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown)
+    }
+  }, [editingIndex])
 
   const refresh = useCallback(() => {
     setCursor(undefined)
@@ -96,35 +147,52 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
     }
   }, [connectionId, keyName, newMember, newScore, refresh])
 
-  const handleEditScore = useCallback(
+  const startEditMember = useCallback((member: ZSetMember, index: number) => {
+    setEditingIndex(index)
+    setEditScore(String(member.score))
+    setEditMemberValue(member.member)
+  }, [])
+
+  const handleEditSave = useCallback(
     async (member: string) => {
+      if (isSavingEdit) return
       const score = parseFloat(editScore)
       if (isNaN(score)) {
-        useToastStore.getState().warning('Invalid score', 'Score must be a number')
+        useToastStore.getState().warning(t('toast.invalidScore'), t('toast.scoreMustBeNumber'))
         return
       }
+      if (!editMemberValue.trim()) {
+        useToastStore.getState().warning(t('toast.updateFailed'), t('zset.memberValue'))
+        return
+      }
+      setIsSavingEdit(true)
       try {
         const result = (await window.redixAPI.data.addField(connectionId, keyName, {
-          member,
+          oldMember: member,
+          member: editMemberValue.trim(),
           score,
-          xx: true,
         })) as { success: boolean; error?: { message: string } }
         if (result.success) {
-          useToastStore.getState().success(t('toast.scoreUpdated'))
+          useToastStore.getState().success(t('toast.memberUpdated'))
           setEditingIndex(null)
+          setEditMemberValue('')
           refresh()
         } else {
           useToastStore.getState().error(t('toast.updateFailed'), result.error?.message)
         }
       } catch {
         useToastStore.getState().error(t('toast.updateFailed'))
+      } finally {
+        setIsSavingEdit(false)
       }
     },
-    [connectionId, keyName, editScore, refresh]
+    [connectionId, keyName, editMemberValue, editScore, isSavingEdit, refresh]
   )
 
   const handleDelete = useCallback(
     async (member: string) => {
+      if (isDeleting) return
+      setIsDeleting(true)
       try {
         const result = (await window.redixAPI.data.deleteField(connectionId, keyName, member)) as {
           success: boolean
@@ -132,16 +200,18 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
         }
         if (result.success) {
           useToastStore.getState().success(t('toast.memberDeleted'))
-          setDeleteConfirm(null)
+          setDeleteTarget(null)
           refresh()
         } else {
           useToastStore.getState().error(t('toast.deleteFailed'), result.error?.message)
         }
       } catch {
         useToastStore.getState().error(t('toast.deleteFailed'))
+      } finally {
+        setIsDeleting(false)
       }
     },
-    [connectionId, keyName, refresh]
+    [connectionId, keyName, isDeleting, refresh]
   )
 
   return (
@@ -210,67 +280,153 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
               <th style={{ width: 48 }}>#</th>
               <th style={{ width: 120 }}>{t('zset.score')}</th>
               <th>{t('zset.member')}</th>
-              <th style={{ width: 48 }}></th>
+              <th style={{ width: 96 }}></th>
             </tr>
           </thead>
           <tbody>
-            {members.map((m, i) => (
-              <tr key={m.member + i}>
-                <td style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)' }}>
-                  {i + 1}
-                </td>
-                <td
-                  style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
-                  onClick={() => {
-                    setEditingIndex(i)
-                    setEditScore(String(m.score))
-                  }}
+            {members.map((m, i) => {
+              const isEditing = editingIndex === i
+              const editControls = m.memberIsBinary ? null : (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }}
+                  title={t('editor.edit')}
+                  onClick={() => startEditMember(m, i)}
                 >
-                  {editingIndex === i ? (
-                    <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-                      <input
-                        className="input"
-                        type="number"
-                        step="any"
-                        style={{ width: 80, padding: '2px 6px', fontSize: 'var(--font-size-sm)' }}
-                        value={editScore}
-                        onChange={(e) => setEditScore(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleEditScore(m.member)
-                          if (e.key === 'Escape') setEditingIndex(null)
-                        }}
-                        autoFocus
-                      />
-                      <button className="btn btn-primary btn-sm" style={{ padding: '2px 6px' }} onClick={() => handleEditScore(m.member)}>
-                        <Save size={11} />
-                      </button>
-                      <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditingIndex(null)}>
-                        <X size={11} />
-                      </button>
-                    </div>
-                  ) : (
-                    <span>{m.score}</span>
-                  )}
-                </td>
-                <td className="mono">{formatDisplayValue(m.member)}</td>
-                <td style={{ textAlign: 'center' }}>
-                  {deleteConfirm === i ? (
-                    <span style={{ display: 'flex', gap: 2 }}>
-                      <button className="btn btn-danger btn-sm" style={{ padding: '2px 6px' }} onClick={() => handleDelete(m.member)}>
-                        <Trash2 size={11} />
-                      </button>
-                      <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setDeleteConfirm(null)}>
-                        <X size={11} />
-                      </button>
-                    </span>
-                  ) : (
-                    <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }} onClick={() => setDeleteConfirm(i)}>
-                      <Trash2 size={13} />
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
+                  <Edit3 size={13} />
+                </button>
+              )
+              const deleteControls = m.memberIsBinary ? (
+                <button
+                  className="btn btn-ghost btn-sm"
+                  style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }}
+                  disabled
+                  title="Binary members cannot be deleted from this view yet"
+                >
+                  <Trash2 size={13} />
+                </button>
+              ) : (
+                <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }} onClick={() => setDeleteTarget(m)}>
+                  <Trash2 size={13} />
+                </button>
+              )
+              const editActions = (
+                <span data-zset-editing="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ padding: '2px 6px' }}
+                    disabled={isSavingEdit || !editMemberValue.trim()}
+                    onClick={() => handleEditSave(m.member)}
+                  >
+                    <Save size={11} />
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditingIndex(null)}>
+                    <X size={11} />
+                  </button>
+                </span>
+              )
+              const rowActions = isEditing ? editActions : (
+                <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  {editControls}
+                  {deleteControls}
+                </span>
+              )
+
+              if (m.memberIsBinary) {
+                return (
+                  <tr key={m.member + i}>
+                    <td
+                      colSpan={4}
+                      style={{
+                        padding: 12,
+                        whiteSpace: 'normal',
+                        overflow: 'visible',
+                        textOverflow: 'clip',
+                        maxWidth: 'none',
+                      }}
+                    >
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
+                          <span className="mono" style={{ flexShrink: 0, color: 'var(--text-tertiary)', fontSize: 'var(--font-size-xs)' }}>
+                            #{i + 1}
+                          </span>
+                          <span className="mono" style={{ flexShrink: 0, color: 'var(--text-secondary)', fontSize: 'var(--font-size-xs)' }}>
+                            score {m.score}
+                          </span>
+                          <span className="mono" style={{ flex: 1, minWidth: 0, color: 'var(--text-primary)', fontSize: 'var(--font-size-sm)' }}>
+                            {formatMemberValue(m)}
+                          </span>
+                          <span style={{ flexShrink: 0 }}>{rowActions}</span>
+                        </div>
+                        <BinaryZSetMember member={m} />
+                      </div>
+                    </td>
+                  </tr>
+                )
+              }
+
+              return (
+                <tr key={m.member + i}>
+                  <td style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)' }}>
+                    {i + 1}
+                  </td>
+                  <td
+                    style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                    onClick={() => startEditMember(m, i)}
+                  >
+                    {isEditing ? (
+                      <div
+                        ref={editingRef}
+                        data-zset-editing="true"
+                        style={{ display: 'flex', gap: 4, alignItems: 'center' }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          className="input"
+                          type="number"
+                          step="any"
+                          style={{ width: 80, padding: '2px 6px', fontSize: 'var(--font-size-sm)' }}
+                          value={editScore}
+                          onChange={(e) => setEditScore(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleEditSave(m.member)
+                            if (e.key === 'Escape') setEditingIndex(null)
+                          }}
+                          autoFocus
+                        />
+                      </div>
+                    ) : (
+                      <span>{m.score}</span>
+                    )}
+                  </td>
+                  <td className="mono">
+                    {isEditing ? (
+                      <div
+                        data-zset-editing="true"
+                        style={{ display: 'flex', gap: 4, alignItems: 'center' }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          className="input"
+                          style={{ padding: '2px 6px', fontSize: 'var(--font-size-sm)' }}
+                          value={editMemberValue}
+                          onChange={(event) => setEditMemberValue(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') handleEditSave(m.member)
+                            if (event.key === 'Escape') setEditingIndex(null)
+                          }}
+                        />
+                      </div>
+                    ) : (
+                      formatMemberValue(m)
+                    )}
+                  </td>
+                  <td style={{ textAlign: 'center' }}>{rowActions}</td>
+                </tr>
+              )
+            })}
             {members.length === 0 && !isLoading && (
               <tr>
                 <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 24 }}>
@@ -288,6 +444,13 @@ const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
           {isLoading ? t('zset.loading') : t('zset.loadMore')}
         </button>
       )}
+      <ConfirmDeleteDialog
+        open={deleteTarget != null}
+        target={deleteTarget ? formatMemberValue(deleteTarget) : ''}
+        confirming={isDeleting}
+        onCancel={() => setDeleteTarget(null)}
+        onConfirm={() => deleteTarget && handleDelete(deleteTarget.member)}
+      />
     </div>
   )
 }

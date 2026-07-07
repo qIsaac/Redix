@@ -398,6 +398,10 @@
   min-height: 34px;
 }
 
+.browser-cli-panel.collapsed .browser-cli-header {
+  border-bottom: none;
+}
+
 .browser-cli-header {
   height: 34px;
   min-height: 34px;

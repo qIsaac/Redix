@@ -1,5 +1,5 @@
 import { useEffect, type ReactElement } from 'react'
-import { Minus, Terminal as TerminalIcon, X } from 'lucide-react'
+import { ChevronDown, ChevronUp, Terminal as TerminalIcon, X } from 'lucide-react'
 import AppLayout from './components/AppLayout'
 import KeyBrowser from './components/KeyBrowser'
 import KeyDetail from './components/KeyDetail'
@@ -73,7 +73,7 @@ function App(): ReactElement {
                       onClick={toggleBrowserCliCollapsed}
                       title={browserCliCollapsed ? 'Expand CLI' : 'Collapse CLI'}
                     >
-                      <Minus size={14} />
+                      {browserCliCollapsed ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                     </button>
                     <button className="icon-button" onClick={closeBrowserCli} title="Close CLI">
                       <X size={14} />

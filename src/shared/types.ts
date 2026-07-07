@@ -6,6 +6,7 @@ export interface ConnectionConfig {
   host: string;
   port: number;
   password?: string;
+  hasPassword?: boolean;
   db?: number;
   tls?: boolean;
   sentinelOptions?: {
@@ -34,6 +35,8 @@ export interface KeyInfo {
   type: string;
   ttl: number;  // -1: no expiry, -2: key doesn't exist
   memory?: number | null;
+  connectionId?: string;
+  db?: number;
 }
 
 // SCAN 结果
@@ -42,6 +45,8 @@ export interface ScanResult {
   cursor: string;
   hasMore: boolean;
   totalScanned?: number;
+  connectionId?: string;
+  db?: number;
 }
 
 // 通用分页结果
@@ -56,18 +61,75 @@ export interface DataPage<T> {
 export interface HashField {
   field: string;
   value: string;
+  fieldEncoding?: 'utf8' | 'binary';
+  fieldIsBinary?: boolean;
+  fieldLength?: number;
+  fieldPreviewLength?: number;
+  fieldHexDump?: string;
+  valueEncoding?: 'utf8' | 'binary';
+  valueIsBinary?: boolean;
+  valueLength?: number;
+  valuePreviewLength?: number;
+  valueHexDump?: string;
+  valueIsTruncated?: boolean;
+}
+
+// Set 成员
+export interface SetMember {
+  member: string;
+  memberEncoding?: 'utf8' | 'binary';
+  memberIsBinary?: boolean;
+  memberLength?: number;
+  memberPreviewLength?: number;
+  memberHexDump?: string;
+  memberIsTruncated?: boolean;
+}
+
+// List 元素
+export interface ListElement {
+  index: number;
+  value: string;
+  valueEncoding?: 'utf8' | 'binary';
+  valueIsBinary?: boolean;
+  valueLength?: number;
+  valuePreviewLength?: number;
+  valueHexDump?: string;
+  valueIsTruncated?: boolean;
 }
 
 // ZSet 成员
 export interface ZSetMember {
   member: string;
   score: number;
+  memberEncoding?: 'utf8' | 'binary';
+  memberIsBinary?: boolean;
+  memberLength?: number;
+  memberPreviewLength?: number;
+  memberHexDump?: string;
+  memberIsTruncated?: boolean;
+}
+
+export interface StreamFieldValue {
+  field: string;
+  value: string;
+  fieldEncoding?: 'utf8' | 'binary';
+  fieldIsBinary?: boolean;
+  fieldLength?: number;
+  fieldPreviewLength?: number;
+  fieldHexDump?: string;
+  valueEncoding?: 'utf8' | 'binary';
+  valueIsBinary?: boolean;
+  valueLength?: number;
+  valuePreviewLength?: number;
+  valueHexDump?: string;
+  valueIsTruncated?: boolean;
 }
 
 // Stream 条目
 export interface StreamEntry {
   id: string;
   fields: Record<string, string>;
+  fieldValues?: StreamFieldValue[];
 }
 
 // IPC 响应
@@ -87,6 +149,8 @@ export interface CLIResult {
   result: string;
   isError: boolean;
   isWarning: boolean;
+  requiresConfirmation?: boolean;
+  truncated?: boolean;
 }
 
 // 服务器指标

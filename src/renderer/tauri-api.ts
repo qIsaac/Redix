@@ -52,8 +52,8 @@ const connectionsAPI = {
 };
 
 const scanAPI = {
-  start: (connectionId: string, pattern?: string, typeFilter?: string) =>
-    call('scan_start', { connectionId, pattern, typeFilter }),
+  start: (connectionId: string, pattern?: string, typeFilter?: string, db?: number) =>
+    call('scan_start', { connectionId, pattern, typeFilter, db }),
   next: (sessionId: string, _connectionId?: string) =>
     call('scan_next', { sessionId }),
   search: (connectionId: string, pattern: string) =>
@@ -84,8 +84,8 @@ const dataAPI = {
 };
 
 const cliAPI = {
-  execute: (connectionId: string, command: string) =>
-    call('cli_execute', { connectionId, command }),
+  execute: (connectionId: string, command: string, confirmed?: boolean) =>
+    call('cli_execute', { connectionId, command, confirmed }),
 };
 
 const clipboardAPI = {

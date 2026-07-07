@@ -15,3 +15,9 @@ export function isControlChar(char: string): boolean {
   const code = char.charCodeAt(0)
   return (code >= 0 && code <= 0x1f) || code === 0x7f
 }
+
+export function formatBinarySummary(length?: number, previewLength?: number): string {
+  const total = length ?? 0
+  const preview = previewLength ?? total
+  return `binary-data(length=${total}, preview=${preview} bytes)`
+}

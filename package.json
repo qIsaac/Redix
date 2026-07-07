@@ -10,6 +10,7 @@
     "build:dmg": "tauri build --bundles dmg",
     "build:web": "vite build --config vite.config.ts",
     "preview": "vite preview --config vite.config.ts",
+    "verify:macos": "scripts/verify-macos-release.sh",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
     "typecheck": "npm run typecheck:web"
   },

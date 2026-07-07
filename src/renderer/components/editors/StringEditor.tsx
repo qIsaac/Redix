@@ -9,7 +9,35 @@ interface StringEditorProps {
   keyName: string
 }
 
-type ViewMode = 'text' | 'json'
+type ViewMode = 'text' | 'json' | 'hex'
+
+interface StringValuePayload {
+  kind?: 'string'
+  value?: string
+  textPreview?: string
+  hexDump?: string
+  length?: number
+  previewLength?: number
+  isBinary?: boolean
+  isTruncated?: boolean
+}
+
+function extractJsonPreview(value: string): string | null {
+  const candidates = [value]
+  const objectStart = value.search(/[\[{]/)
+  if (objectStart > 0) {
+    candidates.push(value.slice(objectStart))
+  }
+
+  for (const candidate of candidates) {
+    try {
+      return JSON.stringify(JSON.parse(candidate), null, 2)
+    } catch {
+      // Try the next candidate.
+    }
+  }
+  return null
+}
 
 const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName }) => {
   const t = useI18n((s) => s.t)
@@ -21,21 +49,37 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
   const [isTruncated, setIsTruncated] = useState(false)
   const [originalValue, setOriginalValue] = useState('')
   const [showEscaped, setShowEscaped] = useState(true)
+  const [hexDump, setHexDump] = useState('')
+  const [isBinary, setIsBinary] = useState(false)
+  const [valueLength, setValueLength] = useState<number | null>(null)
+  const [jsonPreview, setJsonPreview] = useState<string | null>(null)
 
   const loadValue = useCallback(async () => {
     setIsLoading(true)
     try {
-      const result = (await window.redixAPI.data.view(connectionId, keyName)) as {
+      const result = (await window.redixAPI.data.view(connectionId, keyName, { type: 'string' })) as {
         success: boolean
         data?: unknown
       }
       if (result.success && result.data !== undefined) {
-        const raw = typeof result.data === 'string' ? result.data : JSON.stringify(result.data, null, 2)
-        const truncated = raw.length > 1_000_000
+        const payload = result.data as StringValuePayload
+        const hasStructuredPayload =
+          payload && typeof payload === 'object' && ('value' in payload || 'textPreview' in payload || 'hexDump' in payload)
+        const raw = hasStructuredPayload
+          ? String(payload.textPreview ?? payload.value ?? '')
+          : String(result.data)
+        const binary = Boolean(hasStructuredPayload && payload.isBinary)
+        const truncated = Boolean(hasStructuredPayload ? payload.isTruncated : raw.length > 1_000_000)
         const display = truncated ? raw.slice(0, 1_000_000) : raw
         setValue(display)
         setOriginalValue(display)
         setIsTruncated(truncated)
+        setHexDump(hasStructuredPayload ? payload.hexDump ?? '' : '')
+        setIsBinary(binary)
+        setValueLength(hasStructuredPayload && typeof payload.length === 'number' ? payload.length : null)
+        const extractedJson = extractJsonPreview(display)
+        setJsonPreview(extractedJson)
+        setViewMode(extractedJson ? 'json' : 'text')
       }
     } catch {
       useToastStore.getState().error(t('toast.loadFailed'), t('toast.couldNotLoad'))
@@ -51,26 +95,23 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
   // Auto-detect JSON and switch view mode accordingly
   useEffect(() => {
     if (value) {
-      try {
-        JSON.parse(value)
+      const extractedJson = extractJsonPreview(value)
+      setJsonPreview(extractedJson)
+      if (extractedJson && viewMode !== 'hex') {
         setViewMode('json')
-      } catch {
+      } else if (!extractedJson && viewMode === 'json') {
         setViewMode('text')
       }
     }
-  }, [value])
+  }, [value, viewMode])
 
   const displayValue = useMemo(() => {
     if (viewMode === 'json') {
-      try {
-        const parsed = JSON.parse(value)
-        return JSON.stringify(parsed, null, 2)
-      } catch {
-        return value
-      }
+      return jsonPreview ?? value
     }
+    if (viewMode === 'hex') return hexDump
     return showEscaped ? formatDisplayValue(value) : value
-  }, [value, viewMode, showEscaped])
+  }, [value, viewMode, showEscaped, hexDump, jsonPreview])
 
   const handleSave = useCallback(async () => {
     setIsSaving(true)
@@ -94,11 +135,11 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
   }, [connectionId, keyName, value])
 
   const handleCopy = useCallback(() => {
-    navigator.clipboard.writeText(value).then(
+    navigator.clipboard.writeText(viewMode === 'hex' ? hexDump : value).then(
       () => useToastStore.getState().success(t('toast.copied')),
       () => useToastStore.getState().error(t('toast.copyFailed'))
     )
-  }, [value, t])
+  }, [value, hexDump, viewMode, t])
 
   const textareaHeight = value.length > 1000 ? '400px' : '200px'
 
@@ -130,6 +171,7 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
               className={`tab-button ${viewMode === 'json' ? 'active' : ''}`}
               style={{ flex: 'none', padding: '3px 12px', fontSize: 'var(--font-size-sm)' }}
               onClick={() => setViewMode('json')}
+              disabled={!jsonPreview}
             >
               {t('editor.json')}
             </button>
@@ -140,8 +182,22 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
             >
               {t('editor.text')}
             </button>
+            {hexDump && (
+              <button
+                className={`tab-button ${viewMode === 'hex' ? 'active' : ''}`}
+                style={{ flex: 'none', padding: '3px 12px', fontSize: 'var(--font-size-sm)' }}
+                onClick={() => setViewMode('hex')}
+              >
+                HEX
+              </button>
+            )}
           </div>
         </div>
+        {valueLength != null && (
+          <span style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-tertiary)' }}>
+            {valueLength} bytes
+          </span>
+        )}
         <div style={{ flex: 1 }} />
         {viewMode === 'text' && !isEditing && (
           <button
@@ -174,7 +230,7 @@ const StringEditorInner: React.FC<StringEditorProps> = ({ connectionId, keyName 
             </button>
           </>
         ) : (
-          <button className="btn btn-secondary btn-sm" onClick={() => setIsEditing(true)}>
+          <button className="btn btn-secondary btn-sm" onClick={() => setIsEditing(true)} disabled={isBinary}>
             <Edit3 size={13} />
             {t('editor.edit')}
           </button>

@@ -8,6 +8,12 @@ export interface DatabaseEntry {
 }
 
 const ADDED_DB_STORAGE_KEY = 'redix:added-databases'
+const ACTIVE_SELECTION_STORAGE_KEY = 'redix:active-selection'
+
+interface ActiveSelection {
+  connectionId: string
+  db: number
+}
 
 function loadAddedDatabases(): DatabaseEntry[] {
   try {
@@ -19,9 +25,33 @@ function loadAddedDatabases(): DatabaseEntry[] {
   return []
 }
 
+function loadActiveSelection(): ActiveSelection | null {
+  try {
+    const raw = localStorage.getItem(ACTIVE_SELECTION_STORAGE_KEY)
+    if (!raw) return null
+    const value = JSON.parse(raw) as Partial<ActiveSelection>
+    if (typeof value.connectionId === 'string' && typeof value.db === 'number') {
+      return { connectionId: value.connectionId, db: value.db }
+    }
+  } catch {
+    /* ignore */
+  }
+  return null
+}
+
 function saveAddedDatabases(entries: DatabaseEntry[]): void {
   localStorage.setItem(ADDED_DB_STORAGE_KEY, JSON.stringify(entries))
 }
+
+function saveActiveSelection(selection: ActiveSelection | null): void {
+  if (!selection) {
+    localStorage.removeItem(ACTIVE_SELECTION_STORAGE_KEY)
+    return
+  }
+  localStorage.setItem(ACTIVE_SELECTION_STORAGE_KEY, JSON.stringify(selection))
+}
+
+const savedActiveSelection = loadActiveSelection()
 
 interface ConnectionStore {
   connections: ConnectionInfo[]
@@ -51,8 +81,8 @@ interface ConnectionStore {
 
 export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   connections: [],
-  activeConnectionId: null,
-  currentDb: 0,
+  activeConnectionId: savedActiveSelection?.connectionId ?? null,
+  currentDb: savedActiveSelection?.db ?? 0,
   isLoading: false,
   error: null,
   dbSizes: {},
@@ -72,7 +102,26 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
           if (obj.config) return obj as unknown as ConnectionInfo  // 已经是 ConnectionInfo
           return { config: obj as unknown as ConnectionConfig, status: 'disconnected' as const }  // 需要转换
         })
-        set({ connections, isLoading: false })
+        set((state) => {
+          const currentActiveExists = state.activeConnectionId
+            ? connections.some((connection) => connection.config.id === state.activeConnectionId)
+            : false
+          const savedActiveExists = savedActiveSelection
+            ? connections.some((connection) => connection.config.id === savedActiveSelection.connectionId)
+            : false
+          if (currentActiveExists) {
+            return { connections, isLoading: false }
+          }
+          if (savedActiveSelection && savedActiveExists) {
+            return {
+              connections,
+              activeConnectionId: savedActiveSelection.connectionId,
+              currentDb: savedActiveSelection.db,
+              isLoading: false,
+            }
+          }
+          return { connections, activeConnectionId: null, isLoading: false }
+        })
       } else {
         set({ isLoading: false, error: data.error?.message ?? 'Failed to load connections' })
       }
@@ -128,6 +177,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
             addedDatabases: newAddedDbs,
           }
         })
+        if (get().activeConnectionId === null) saveActiveSelection(null)
       } else {
         set({ error: data.error?.message ?? 'Failed to delete connection' })
       }
@@ -137,10 +187,16 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
   },
 
   selectConnection: (id) => {
-    set((state) => ({
-      activeConnectionId: id,
-      currentDb: state.activeConnectionId === id ? state.currentDb : 0,
-    }))
+    set((state) => {
+      const nextDb = state.activeConnectionId === id
+        ? state.currentDb
+        : state.connections.find((connection) => connection.config.id === id)?.config.db ?? 0
+      saveActiveSelection({ connectionId: id, db: nextDb })
+      return {
+        activeConnectionId: id,
+        currentDb: nextDb,
+      }
+    })
   },
 
   updateConnectionStatus: (id, status, error) => {
@@ -194,7 +250,8 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
     try {
       const result = await window.redixAPI.connection.selectDb(connectionId, db)
       if (result.success) {
-        set({ currentDb: db })
+        set({ activeConnectionId: connectionId, currentDb: db })
+        saveActiveSelection({ connectionId, db })
         return true
       }
       return false
@@ -245,6 +302,7 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
         activeConnectionId: wasActive ? null : state.activeConnectionId,
       }
     })
+    if (get().activeConnectionId === null) saveActiveSelection(null)
   },
 
   updateDatabase: (connectionId, oldDbNumber, newDbNumber, newAlias) => {
@@ -266,10 +324,12 @@ export const useConnectionStore = create<ConnectionStore>((set, get) => ({
       // Update currentDb if the active db was renamed
       const wasActive =
         state.activeConnectionId === connectionId && state.currentDb === oldDbNumber
-      return {
+      const nextState = {
         addedDatabases: newAddedDbs,
         currentDb: wasActive ? newDbNumber : state.currentDb,
       }
+      if (wasActive) saveActiveSelection({ connectionId, db: newDbNumber })
+      return nextState
     })
   },
 }))

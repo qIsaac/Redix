@@ -356,7 +356,14 @@ const DANGEROUS_COMMAND_SET = new Set<string>(DANGEROUS_COMMANDS)
 const formatPrompt = (connected: boolean, promptLabel = 'redis> '): string =>
   connected ? `\x1b[32m${promptLabel}\x1b[0m` : `\x1b[31m${promptLabel}\x1b[0m`
 
-const normalizeTerminalText = (text: string): string => text.replace(/\r?\n/g, '\r\n')
+const escapeTerminalControls = (text: string): string =>
+  text.replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\x9b]/g, (char) => {
+    const code = char.charCodeAt(0).toString(16).padStart(2, '0')
+    return `\\x${code}`
+  }).replace(/\x1b/g, '\\x1b')
+
+const normalizeTerminalText = (text: string): string =>
+  escapeTerminalControls(text).replace(/\r?\n/g, '\r\n')
 
 const copyTextWithFallback = (text: string): void => {
   if (!text) return
@@ -551,6 +558,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
   const termRef = useRef<XTerm | null>(null)
   const fitAddonRef = useRef<FitAddon | null>(null)
   const inputBufferRef = useRef('')
+  const cursorIndexRef = useRef(0)
   const historyRef = useRef<string[]>([])
   const historyIndexRef = useRef(-1)
   const isExecutingRef = useRef(false)
@@ -558,6 +566,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
   const connectionIdRef = useRef<string | null>(null)
   const ghostHintRef = useRef('')
   const promptLabelRef = useRef('redis> ')
+  const pendingDangerousCommandRef = useRef<string | null>(null)
 
   const connections = useConnectionStore((s) => s.connections)
   const activeConnection = connections.find((c) => c.config.id === connectionId) ?? null
@@ -619,6 +628,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
       const trimmed = command.trim()
       if (!trimmed) {
+        pendingDangerousCommandRef.current = null
         writePrompt(term, connected)
         return
       }
@@ -626,21 +636,25 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
       // Special local commands
       const lower = trimmed.toLowerCase()
       if (lower === 'clear' || lower === 'cls') {
+        pendingDangerousCommandRef.current = null
         term.clear()
         writePrompt(term, connected)
         return
       }
       if (lower === 'help') {
+        pendingDangerousCommandRef.current = null
         writeLine(term, HELP_TEXT)
         writePrompt(term, connected)
         return
       }
       if (lower === 'tips') {
+        pendingDangerousCommandRef.current = null
         writeLine(term, TIPS_TEXT)
         writePrompt(term, connected)
         return
       }
       if (lower === 'exit') {
+        pendingDangerousCommandRef.current = null
         writeLine(term, useI18n.getState().t('terminal.exitHint'), '33')
         writePrompt(term, connected)
         return
@@ -665,13 +679,24 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
       isExecutingRef.current = true
       try {
-        const response = (await window.redixAPI.cli.execute(connId, trimmed)) as IPCResponse<CLIResult>
+        const isDangerous = DANGEROUS_COMMAND_SET.has(getCommandRoot(trimmed))
+        const confirmed = isDangerous && pendingDangerousCommandRef.current === trimmed
+        const response = (await window.redixAPI.cli.execute(connId, trimmed, confirmed)) as IPCResponse<CLIResult>
         if (response && response.success && response.data) {
           const cliResult = response.data
+          if (cliResult.requiresConfirmation) {
+            pendingDangerousCommandRef.current = trimmed
+          } else {
+            pendingDangerousCommandRef.current = null
+          }
           if (cliResult.isWarning) {
             writeLine(term, useI18n.getState().t('terminal.dangerousCommand', { cmd: cliResult.command }), '33')
           }
           writeLine(term, cliResult.command, '36')  // echo command
+          if (cliResult.requiresConfirmation) {
+            writeLine(term, cliResult.result, '33')
+            return
+          }
           if (cliResult.isError) {
             writeLine(term, cliResult.result, '31')
             const usageLines = buildUsageLines(trimmed)
@@ -680,12 +705,17 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
             }
           } else {
             writeLine(term, cliResult.result)
+            if (cliResult.truncated) {
+              writeLine(term, 'Output truncated. Narrow the command or use a cursor-based command.', '33')
+            }
           }
         } else {
+          pendingDangerousCommandRef.current = null
           const errMsg = response?.error?.message ?? 'Unknown error'
           writeLine(term, `(error) ${errMsg}`, '31')
         }
       } catch (err) {
+        pendingDangerousCommandRef.current = null
         const msg = err instanceof Error ? err.message : String(err)
         writeLine(term, `(error) ${msg}`, '31')
       } finally {
@@ -735,6 +765,39 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
     // isTerminalFocused removed — no longer needed after deduplicating event handlers
 
+    const eraseCurrentInput = (): void => {
+      const buf = inputBufferRef.current
+      const cursor = cursorIndexRef.current
+      const charsRight = buf.length - cursor
+      if (charsRight > 0) {
+        term.write(`\x1b[${charsRight}C`)
+      }
+      for (let i = 0; i < buf.length; i++) {
+        term.write('\b \b')
+      }
+    }
+
+    const redrawInput = (next: string, cursor = next.length): void => {
+      clearGhostHint(term)
+      eraseCurrentInput()
+      inputBufferRef.current = next
+      cursorIndexRef.current = Math.max(0, Math.min(cursor, next.length))
+      term.write(next)
+      const charsLeft = next.length - cursorIndexRef.current
+      if (charsLeft > 0) {
+        term.write(`\x1b[${charsLeft}D`)
+      }
+      term.scrollToBottom()
+    }
+
+    const insertTextAtCursor = (text: string): void => {
+      if (!text) return
+      const buf = inputBufferRef.current
+      const cursor = cursorIndexRef.current
+      const next = `${buf.slice(0, cursor)}${text}${buf.slice(cursor)}`
+      redrawInput(next, cursor + text.length)
+    }
+
     const insertPastedText = (text: string): void => {
       if (isExecutingRef.current) return
 
@@ -742,12 +805,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
         .filter((ch) => ch >= ' ' || ch === '\t')
         .join('')
 
-      if (!sanitized) return
-
-      clearGhostHint(term)
-      inputBufferRef.current += sanitized
-      term.write(sanitized)
-      term.scrollToBottom()
+      insertTextAtCursor(sanitized)
     }
 
     const pasteFromClipboard = (): void => {
@@ -806,6 +864,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
         const redrawPromptAndInput = (): void => {
           term.write(`\r\n${formatPrompt(isConnectedRef.current, promptLabelRef.current)}`)
           term.write(inputBufferRef.current)
+          cursorIndexRef.current = inputBufferRef.current.length
           term.scrollToBottom()
         }
 
@@ -822,8 +881,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
         if (matches.length === 1) {
           const completed = completeCommandInput(buf, matches[0])
-          replaceCurrentInput(term, buf, completed)
-          inputBufferRef.current = completed
+          redrawInput(completed)
           return false
         }
 
@@ -902,6 +960,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
       if (keyCode === 13) {
         const cmd = inputBufferRef.current
         inputBufferRef.current = ''
+        cursorIndexRef.current = 0
         clearGhostHint(term)
         term.write('\r\n')
         executeCommand(cmd)
@@ -911,10 +970,21 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
       // Backspace
       if (keyCode === 8) {
         const buf = inputBufferRef.current
-        if (buf.length > 0) {
-          clearGhostHint(term)
-          inputBufferRef.current = buf.slice(0, -1)
-          term.write('\b \b')
+        const cursor = cursorIndexRef.current
+        if (cursor > 0) {
+          const next = `${buf.slice(0, cursor - 1)}${buf.slice(cursor)}`
+          redrawInput(next, cursor - 1)
+        }
+        return
+      }
+
+      // Delete
+      if (keyCode === 46) {
+        const buf = inputBufferRef.current
+        const cursor = cursorIndexRef.current
+        if (cursor < buf.length) {
+          const next = `${buf.slice(0, cursor)}${buf.slice(cursor + 1)}`
+          redrawInput(next, cursor)
         }
         return
       }
@@ -929,21 +999,40 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
             ? hist.length - 1
             : Math.max(0, historyIndexRef.current - 1)
         historyIndexRef.current = idx
-        // Clear current input
-        const currentLen = inputBufferRef.current.length
-        for (let i = 0; i < currentLen; i++) {
-          term.write('\b \b')
+        redrawInput(hist[idx])
+        return
+      }
+
+      if (keyCode === 37 || keyCode === 39) {
+        // Left/Right arrow – move within the current input buffer
+        clearGhostHint(term)
+        if (keyCode === 37 && cursorIndexRef.current > 0) {
+          cursorIndexRef.current -= 1
+          term.write('\x1b[D')
         }
-        inputBufferRef.current = hist[idx]
-        term.write(hist[idx])
+        if (keyCode === 39 && cursorIndexRef.current < inputBufferRef.current.length) {
+          cursorIndexRef.current += 1
+          term.write('\x1b[C')
+        }
+        return
+      }
+
+      // Home / End
+      if (keyCode === 36 || keyCode === 35) {
+        clearGhostHint(term)
+        const cursor = cursorIndexRef.current
+        const target = keyCode === 36 ? 0 : inputBufferRef.current.length
+        const delta = target - cursor
+        if (delta < 0) {
+          term.write(`\x1b[${Math.abs(delta)}D`)
+        } else if (delta > 0) {
+          term.write(`\x1b[${delta}C`)
+        }
+        cursorIndexRef.current = target
         return
       }
 
       // Down arrow – next history
-      if (keyCode === 37 || keyCode === 39) {
-        // Left/Right arrow – ignore for simplicity
-        return
-      }
       if (keyCode === 40) {
         const hist = historyRef.current
         if (historyIndexRef.current === -1) return
@@ -951,19 +1040,10 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
         const nextIdx = historyIndexRef.current + 1
         if (nextIdx >= hist.length) {
           historyIndexRef.current = -1
-          const currentLen = inputBufferRef.current.length
-          for (let i = 0; i < currentLen; i++) {
-            term.write('\b \b')
-          }
-          inputBufferRef.current = ''
+          redrawInput('')
         } else {
           historyIndexRef.current = nextIdx
-          const currentLen = inputBufferRef.current.length
-          for (let i = 0; i < currentLen; i++) {
-            term.write('\b \b')
-          }
-          inputBufferRef.current = hist[nextIdx]
-          term.write(hist[nextIdx])
+          redrawInput(hist[nextIdx])
         }
         return
       }
@@ -975,6 +1055,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
           clearGhostHint(term)
           term.write('^C')
           inputBufferRef.current = ''
+          cursorIndexRef.current = 0
           writePrompt(term, isConnectedRef.current)
         }
         return
@@ -991,9 +1072,7 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
       // Printable characters
       if (key && !domEvent.ctrlKey && !domEvent.altKey && !domEvent.metaKey) {
         const previousInput = inputBufferRef.current
-        clearGhostHint(term)
-        inputBufferRef.current += key
-        term.write(key)
+        insertTextAtCursor(key)
 
         if (key === ' ' && previousInput.trim() && !/\s$/.test(previousInput)) {
           const suggestions = getNextTokenSuggestions(inputBufferRef.current)
