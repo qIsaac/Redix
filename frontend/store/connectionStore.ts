@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ConnectionConfig, ConnectionInfo, ConnectionStatus } from '../../shared/types'
+import type { ConnectionConfig, ConnectionInfo, ConnectionStatus } from '../shared/types'
 
 export interface DatabaseEntry {
   connectionId: string

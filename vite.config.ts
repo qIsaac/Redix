@@ -3,7 +3,7 @@ import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 
 export default defineConfig({
-  root: 'src/renderer',
+  root: 'frontend',
   base: './',
   server: {
     host: '127.0.0.1',
@@ -12,12 +12,12 @@ export default defineConfig({
   },
   resolve: {
     alias: {
-      '@shared': resolve(__dirname, 'src/shared'),
-      '@': resolve(__dirname, 'src/renderer'),
+      '@shared': resolve(__dirname, 'frontend/shared'),
+      '@': resolve(__dirname, 'frontend'),
     },
   },
   build: {
-    outDir: '../../dist-web',
+    outDir: '../dist-web',
     emptyOutDir: true,
   },
   plugins: [react()],

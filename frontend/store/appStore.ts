@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { ConnectionConfig } from '../../shared/types'
+import type { ConnectionConfig } from '../shared/types'
 
 export type ActiveView = 'browser' | 'terminal' | 'monitor'
 

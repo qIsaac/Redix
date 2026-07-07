@@ -17,12 +17,11 @@
     "types": ["node"],
     "baseUrl": ".",
     "paths": {
-      "@shared/*": ["src/shared/*"],
-      "@/*": ["src/renderer/*"]
+      "@shared/*": ["frontend/shared/*"],
+      "@/*": ["frontend/*"]
     }
   },
   "include": [
-    "src/renderer/**/*",
-    "src/shared/**/*"
+    "frontend/**/*"
   ]
 }

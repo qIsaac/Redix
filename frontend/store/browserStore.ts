@@ -1,5 +1,5 @@
 import { create } from 'zustand'
-import type { KeyInfo, ScanResult } from '../../shared/types'
+import type { KeyInfo, ScanResult } from '../shared/types'
 
 interface BrowserStore {
   // State

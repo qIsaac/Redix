@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { IPCResponse } from '../../shared/types'
+import type { IPCResponse } from '../shared/types'
 import { useToastStore } from '../components/Toast'
 
 // ---------------------------------------------------------------------------

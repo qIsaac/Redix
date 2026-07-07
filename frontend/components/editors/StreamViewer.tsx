@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useState } from 'react'
 import { Plus, Save, X, ChevronDown, Hash } from 'lucide-react'
 import { useToastStore } from '../Toast'
-import type { DataPage, StreamEntry, StreamFieldValue } from '../../../shared/types'
+import type { DataPage, StreamEntry, StreamFieldValue } from '../../shared/types'
 import { formatBinarySummary, formatDisplayValue } from '../../utils/format'
 import { useI18n } from '../../i18n'
 

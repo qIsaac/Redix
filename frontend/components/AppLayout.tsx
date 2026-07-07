@@ -5,7 +5,7 @@ import ServerMonitor from './ServerMonitor'
 import { useConnectionStore } from '../store/connectionStore'
 import { useAppStore } from '../store/appStore'
 import { useI18n } from '../i18n'
-import type { ConnectionStatus } from '../../shared/types'
+import type { ConnectionStatus } from '../shared/types'
 
 function statusLabel(status: ConnectionStatus, t: (key: string) => string): string {
   switch (status) {

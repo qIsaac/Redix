@@ -4,7 +4,7 @@ import { Plus, Database, Terminal, BarChart3, Wifi, WifiOff } from 'lucide-react
 import { useConnectionStore } from '../store/connectionStore'
 import { useAppStore, type ActiveView } from '../store/appStore'
 import { useBrowserStore } from '../store/browserStore'
-import type { ConnectionStatus } from '../../shared/types'
+import type { ConnectionStatus } from '../shared/types'
 import { DatabaseDialog } from './DatabaseDialog'
 import { DbSelectorDialog } from './DbSelectorDialog'
 import { useI18n } from '../i18n'

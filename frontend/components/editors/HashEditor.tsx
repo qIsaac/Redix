@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react'
 import { Plus, Trash2, Save, X, ChevronDown, Edit3 } from 'lucide-react'
 import { useToastStore } from '../Toast'
 import ConfirmDeleteDialog from '../ConfirmDeleteDialog'
-import type { DataPage, HashField } from '../../../shared/types'
+import type { DataPage, HashField } from '../../shared/types'
 import { formatDisplayValue } from '../../utils/format'
 import { useI18n } from '../../i18n'
 

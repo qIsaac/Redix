@@ -3,8 +3,8 @@ import { Activity, Cpu, HardDrive, Users, Zap, Clock, RefreshCw, Monitor } from 
 import { useConnectionStore } from '../store/connectionStore'
 import { useInterval } from '../hooks/useIPC'
 import { useI18n } from '../i18n'
-import type { ServerMetrics, SlowLogEntry } from '../../shared/types'
-import type { IPCResponse } from '../../shared/types'
+import type { ServerMetrics, SlowLogEntry } from '../shared/types'
+import type { IPCResponse } from '../shared/types'
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
 

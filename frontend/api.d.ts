@@ -1,4 +1,4 @@
-import type { ConnectionConfig } from '../shared/types'
+import type { ConnectionConfig } from './shared/types'
 
 type Unsubscribe = () => void
 

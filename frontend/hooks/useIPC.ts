@@ -1,5 +1,5 @@
 import { useEffect, useRef } from 'react'
-import type { ConnectionStatus } from '../../shared/types'
+import type { ConnectionStatus } from '../shared/types'
 import { useConnectionStore } from '../store/connectionStore'
 
 /**

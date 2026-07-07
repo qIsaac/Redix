@@ -1,30 +1,24 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Plus, Trash2, Save, X, ChevronDown, Search, Edit3 } from 'lucide-react'
+import React, { useCallback, useEffect, useRef, useState } from 'react'
+import { Plus, Trash2, Save, X, ChevronDown, ArrowUp, ArrowDown, Edit3 } from 'lucide-react'
 import { useToastStore } from '../Toast'
 import ConfirmDeleteDialog from '../ConfirmDeleteDialog'
-import type { DataPage, SetMember } from '../../../shared/types'
-import { formatDisplayValue } from '../../utils/format'
+import type { DataPage, ZSetMember } from '../../shared/types'
+import { formatBinarySummary, formatDisplayValue } from '../../utils/format'
 import { useI18n } from '../../i18n'
 
-interface SetEditorProps {
+interface ZSetEditorProps {
   connectionId: string
   keyName: string
 }
 
-function formatBinarySummary(length?: number, previewLength?: number): string {
-  const total = length ?? 0
-  const preview = previewLength ?? total
-  return `binary-data(length=${total}, preview=${preview} bytes)`
-}
-
-function formatMemberValue(member: SetMember): string {
+function formatMemberValue(member: ZSetMember): string {
   if (member.memberIsBinary) {
     return formatBinarySummary(member.memberLength, member.memberPreviewLength)
   }
   return formatDisplayValue(member.member)
 }
 
-function BinaryMemberValue({ member }: { member: SetMember }): React.ReactElement {
+function BinaryZSetMember({ member }: { member: ZSetMember }): React.ReactElement {
   return (
     <pre
       className="mono"
@@ -47,20 +41,22 @@ function BinaryMemberValue({ member }: { member: SetMember }): React.ReactElemen
   )
 }
 
-const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
+const ZSetEditor: React.FC<ZSetEditorProps> = ({ connectionId, keyName }) => {
   const t = useI18n((s) => s.t)
-  const [members, setMembers] = useState<SetMember[]>([])
+  const [members, setMembers] = useState<ZSetMember[]>([])
   const [cursor, setCursor] = useState<string | undefined>()
   const [hasMore, setHasMore] = useState(false)
   const [totalCount, setTotalCount] = useState<number | undefined>()
   const [isLoading, setIsLoading] = useState(false)
+  const [sortAsc, setSortAsc] = useState(true)
   const [showAddForm, setShowAddForm] = useState(false)
+  const [newScore, setNewScore] = useState('')
   const [newMember, setNewMember] = useState('')
   const [isAdding, setIsAdding] = useState(false)
-  const [searchTerm, setSearchTerm] = useState('')
-  const [editingMember, setEditingMember] = useState<string | null>(null)
+  const [editingIndex, setEditingIndex] = useState<number | null>(null)
+  const [editScore, setEditScore] = useState('')
   const [editMemberValue, setEditMemberValue] = useState('')
-  const [deleteTarget, setDeleteTarget] = useState<SetMember | null>(null)
+  const [deleteTarget, setDeleteTarget] = useState<ZSetMember | null>(null)
   const [isSavingEdit, setIsSavingEdit] = useState(false)
   const [isDeleting, setIsDeleting] = useState(false)
   const editingRef = useRef<HTMLDivElement | null>(null)
@@ -69,11 +65,11 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
     async (append: boolean) => {
       setIsLoading(true)
       try {
-        const options: Record<string, unknown> = { type: 'set' }
+        const options: Record<string, unknown> = { type: 'zset', order: sortAsc ? 'asc' : 'desc' }
         if (append && cursor) options.cursor = cursor
         const result = (await window.redixAPI.data.view(connectionId, keyName, options)) as {
           success: boolean
-          data?: DataPage<SetMember>
+          data?: DataPage<ZSetMember>
         }
         if (result.success && result.data) {
           const page = result.data
@@ -87,55 +83,58 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
           setTotalCount(page.totalCount)
         }
       } catch {
-        useToastStore.getState().error(t('toast.loadFailed'), 'Could not load set members')
+        useToastStore.getState().error(t('toast.loadFailed'), 'Could not load sorted set members')
       } finally {
         setIsLoading(false)
       }
     },
-    [connectionId, keyName, cursor]
+    [connectionId, keyName, sortAsc]
   )
 
   useEffect(() => {
+    setCursor(undefined)
     loadData(false)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [connectionId, keyName])
+  }, [connectionId, keyName, sortAsc])
 
   useEffect(() => {
-    if (editingMember == null) return
+    if (editingIndex == null) return
 
     const handlePointerDown = (event: PointerEvent): void => {
       const target = event.target
+      if (target instanceof Element && target.closest('[data-zset-editing="true"]')) return
       if (target instanceof Node && editingRef.current?.contains(target)) return
-      setEditingMember(null)
+      setEditingIndex(null)
     }
 
     document.addEventListener('pointerdown', handlePointerDown)
     return () => {
       document.removeEventListener('pointerdown', handlePointerDown)
     }
-  }, [editingMember])
+  }, [editingIndex])
 
   const refresh = useCallback(() => {
     setCursor(undefined)
     loadData(false)
   }, [loadData])
 
-  const filteredMembers = useMemo(() => {
-    if (!searchTerm.trim()) return members
-    const term = searchTerm.toLowerCase()
-    return members.filter((m) => m.member.toLowerCase().includes(term) || m.memberHexDump?.toLowerCase().includes(term))
-  }, [members, searchTerm])
-
   const handleAdd = useCallback(async () => {
-    if (!newMember.trim()) return
+    if (!newMember.trim() || newScore === '') return
+    const score = parseFloat(newScore)
+    if (isNaN(score)) {
+      useToastStore.getState().warning(t('toast.invalidScore'), t('toast.scoreMustBeNumber'))
+      return
+    }
     setIsAdding(true)
     try {
       const result = (await window.redixAPI.data.addField(connectionId, keyName, {
         member: newMember.trim(),
+        score,
       })) as { success: boolean; error?: { message: string } }
       if (result.success) {
         useToastStore.getState().success(t('toast.memberAdded'))
         setNewMember('')
+        setNewScore('')
         setShowAddForm(false)
         refresh()
       } else {
@@ -146,7 +145,49 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
     } finally {
       setIsAdding(false)
     }
-  }, [connectionId, keyName, newMember, refresh])
+  }, [connectionId, keyName, newMember, newScore, refresh])
+
+  const startEditMember = useCallback((member: ZSetMember, index: number) => {
+    setEditingIndex(index)
+    setEditScore(String(member.score))
+    setEditMemberValue(member.member)
+  }, [])
+
+  const handleEditSave = useCallback(
+    async (member: string) => {
+      if (isSavingEdit) return
+      const score = parseFloat(editScore)
+      if (isNaN(score)) {
+        useToastStore.getState().warning(t('toast.invalidScore'), t('toast.scoreMustBeNumber'))
+        return
+      }
+      if (!editMemberValue.trim()) {
+        useToastStore.getState().warning(t('toast.updateFailed'), t('zset.memberValue'))
+        return
+      }
+      setIsSavingEdit(true)
+      try {
+        const result = (await window.redixAPI.data.addField(connectionId, keyName, {
+          oldMember: member,
+          member: editMemberValue.trim(),
+          score,
+        })) as { success: boolean; error?: { message: string } }
+        if (result.success) {
+          useToastStore.getState().success(t('toast.memberUpdated'))
+          setEditingIndex(null)
+          setEditMemberValue('')
+          refresh()
+        } else {
+          useToastStore.getState().error(t('toast.updateFailed'), result.error?.message)
+        }
+      } catch {
+        useToastStore.getState().error(t('toast.updateFailed'))
+      } finally {
+        setIsSavingEdit(false)
+      }
+    },
+    [connectionId, keyName, editMemberValue, editScore, isSavingEdit, refresh]
+  )
 
   const handleDelete = useCallback(
     async (member: string) => {
@@ -173,75 +214,60 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
     [connectionId, keyName, isDeleting, refresh]
   )
 
-  const handleEditSave = useCallback(
-    async (oldMember: string) => {
-      if (isSavingEdit || !editMemberValue.trim()) return
-      setIsSavingEdit(true)
-      try {
-        const result = (await window.redixAPI.data.addField(connectionId, keyName, {
-          oldMember,
-          member: editMemberValue.trim(),
-        })) as { success: boolean; error?: { message: string } }
-        if (result.success) {
-          useToastStore.getState().success(t('toast.memberUpdated'))
-          setEditingMember(null)
-          setEditMemberValue('')
-          refresh()
-        } else {
-          useToastStore.getState().error(t('toast.updateFailed'), result.error?.message)
-        }
-      } catch {
-        useToastStore.getState().error(t('toast.updateFailed'))
-      } finally {
-        setIsSavingEdit(false)
-      }
-    },
-    [connectionId, keyName, editMemberValue, isSavingEdit, refresh]
-  )
-
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span style={{ fontSize: 'var(--font-size-sm)', color: 'var(--text-secondary)' }}>
-          {t('set.members')} <strong>{totalCount ?? members.length}</strong>
+          {t('zset.members')} <strong>{totalCount ?? members.length}</strong>
         </span>
+        <button
+          className="btn btn-ghost btn-sm"
+          onClick={() => setSortAsc(!sortAsc)}
+          title={sortAsc ? t('zset.ascending') : t('zset.descending')}
+        >
+          {sortAsc ? <ArrowUp size={13} /> : <ArrowDown size={13} />}
+          {sortAsc ? 'ASC' : 'DESC'}
+        </button>
         <div style={{ flex: 1 }} />
         <button className="btn btn-primary btn-sm" onClick={() => setShowAddForm(!showAddForm)}>
           {showAddForm ? <X size={13} /> : <Plus size={13} />}
-          {showAddForm ? t('set.cancel') : t('set.addMember')}
+          {showAddForm ? t('zset.cancel') : t('zset.addMember')}
         </button>
-      </div>
-
-      {/* Search */}
-      <div className="search-input-wrapper">
-        <Search className="search-input-icon" size={14} />
-        <input
-          className="search-input"
-          placeholder={t('set.filterMembers')}
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
       </div>
 
       {/* Add form */}
       {showAddForm && (
         <div className="card" style={{ display: 'flex', gap: 8, alignItems: 'flex-end', padding: 12 }}>
+          <div style={{ width: 120 }}>
+            <label style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
+              {t('zset.score')}
+            </label>
+            <input
+              className="input"
+              type="number"
+              step="any"
+              value={newScore}
+              onChange={(e) => setNewScore(e.target.value)}
+              placeholder="0"
+              onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
+            />
+          </div>
           <div style={{ flex: 1 }}>
             <label style={{ fontSize: 'var(--font-size-xs)', color: 'var(--text-secondary)', marginBottom: 4, display: 'block' }}>
-              {t('set.member')}
+              {t('zset.member')}
             </label>
             <input
               className="input"
               value={newMember}
               onChange={(e) => setNewMember(e.target.value)}
-              placeholder={t('set.memberValue')}
+              placeholder={t('zset.memberValue')}
               onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
             />
           </div>
-          <button className="btn btn-primary btn-sm" onClick={handleAdd} disabled={isAdding || !newMember.trim()}>
+          <button className="btn btn-primary btn-sm" onClick={handleAdd} disabled={isAdding || !newMember.trim() || newScore === ''}>
             <Save size={13} />
-            {t('set.add')}
+            {t('zset.add')}
           </button>
         </div>
       )}
@@ -252,26 +278,25 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
           <thead>
             <tr>
               <th style={{ width: 48 }}>#</th>
-              <th>{t('set.member')}</th>
-              <th style={{ width: 84 }}></th>
+              <th style={{ width: 120 }}>{t('zset.score')}</th>
+              <th>{t('zset.member')}</th>
+              <th style={{ width: 96 }}></th>
             </tr>
           </thead>
           <tbody>
-            {filteredMembers.map((member, i) => {
-              const editControls = member.memberIsBinary ? null : (
+            {members.map((m, i) => {
+              const isEditing = editingIndex === i
+              const editControls = m.memberIsBinary ? null : (
                 <button
                   className="btn btn-ghost btn-sm"
                   style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }}
                   title={t('editor.edit')}
-                  onClick={() => {
-                    setEditingMember(member.member)
-                    setEditMemberValue(member.member)
-                  }}
+                  onClick={() => startEditMember(m, i)}
                 >
                   <Edit3 size={13} />
                 </button>
               )
-              const deleteControls = member.memberIsBinary ? (
+              const deleteControls = m.memberIsBinary ? (
                 <button
                   className="btn btn-ghost btn-sm"
                   style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }}
@@ -281,26 +306,37 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
                   <Trash2 size={13} />
                 </button>
               ) : (
-                <button
-                  className="btn btn-ghost btn-sm"
-                  style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }}
-                  onClick={() => setDeleteTarget(member)}
-                >
+                <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px', color: 'var(--text-tertiary)' }} onClick={() => setDeleteTarget(m)}>
                   <Trash2 size={13} />
                 </button>
               )
-              const rowActions = (
+              const editActions = (
+                <span data-zset-editing="true" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
+                  <button
+                    className="btn btn-primary btn-sm"
+                    style={{ padding: '2px 6px' }}
+                    disabled={isSavingEdit || !editMemberValue.trim()}
+                    onClick={() => handleEditSave(m.member)}
+                  >
+                    <Save size={11} />
+                  </button>
+                  <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditingIndex(null)}>
+                    <X size={11} />
+                  </button>
+                </span>
+              )
+              const rowActions = isEditing ? editActions : (
                 <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 4 }}>
                   {editControls}
                   {deleteControls}
                 </span>
               )
 
-              if (member.memberIsBinary) {
+              if (m.memberIsBinary) {
                 return (
-                  <tr key={member.member + i}>
+                  <tr key={m.member + i}>
                     <td
-                      colSpan={3}
+                      colSpan={4}
                       style={{
                         padding: 12,
                         whiteSpace: 'normal',
@@ -311,33 +347,18 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
                     >
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 12, minWidth: 0 }}>
-                          <span
-                            className="mono"
-                            style={{
-                              flexShrink: 0,
-                              color: 'var(--text-tertiary)',
-                              fontSize: 'var(--font-size-xs)',
-                            }}
-                          >
+                          <span className="mono" style={{ flexShrink: 0, color: 'var(--text-tertiary)', fontSize: 'var(--font-size-xs)' }}>
                             #{i + 1}
                           </span>
-                          <span
-                            className="mono"
-                            style={{
-                              flex: 1,
-                              minWidth: 0,
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis',
-                              whiteSpace: 'nowrap',
-                              color: 'var(--text-primary)',
-                              fontSize: 'var(--font-size-sm)',
-                            }}
-                          >
-                            {formatMemberValue(member)}
+                          <span className="mono" style={{ flexShrink: 0, color: 'var(--text-secondary)', fontSize: 'var(--font-size-xs)' }}>
+                            score {m.score}
+                          </span>
+                          <span className="mono" style={{ flex: 1, minWidth: 0, color: 'var(--text-primary)', fontSize: 'var(--font-size-sm)' }}>
+                            {formatMemberValue(m)}
                           </span>
                           <span style={{ flexShrink: 0 }}>{rowActions}</span>
                         </div>
-                        <BinaryMemberValue member={member} />
+                        <BinaryZSetMember member={m} />
                       </div>
                     </td>
                   </tr>
@@ -345,14 +366,44 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
               }
 
               return (
-                <tr key={member.member + i}>
+                <tr key={m.member + i}>
                   <td style={{ color: 'var(--text-tertiary)', fontFamily: 'var(--font-mono)', fontSize: 'var(--font-size-xs)' }}>
                     {i + 1}
                   </td>
-                  <td className="mono">
-                    {editingMember === member.member ? (
+                  <td
+                    style={{ cursor: 'pointer', fontFamily: 'var(--font-mono)' }}
+                    onClick={() => startEditMember(m, i)}
+                  >
+                    {isEditing ? (
                       <div
                         ref={editingRef}
+                        data-zset-editing="true"
+                        style={{ display: 'flex', gap: 4, alignItems: 'center' }}
+                        onPointerDown={(event) => event.stopPropagation()}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <input
+                          className="input"
+                          type="number"
+                          step="any"
+                          style={{ width: 80, padding: '2px 6px', fontSize: 'var(--font-size-sm)' }}
+                          value={editScore}
+                          onChange={(e) => setEditScore(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') handleEditSave(m.member)
+                            if (e.key === 'Escape') setEditingIndex(null)
+                          }}
+                          autoFocus
+                        />
+                      </div>
+                    ) : (
+                      <span>{m.score}</span>
+                    )}
+                  </td>
+                  <td className="mono">
+                    {isEditing ? (
+                      <div
+                        data-zset-editing="true"
                         style={{ display: 'flex', gap: 4, alignItems: 'center' }}
                         onPointerDown={(event) => event.stopPropagation()}
                         onClick={(event) => event.stopPropagation()}
@@ -363,35 +414,23 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
                           value={editMemberValue}
                           onChange={(event) => setEditMemberValue(event.target.value)}
                           onKeyDown={(event) => {
-                            if (event.key === 'Enter') handleEditSave(member.member)
-                            if (event.key === 'Escape') setEditingMember(null)
+                            if (event.key === 'Enter') handleEditSave(m.member)
+                            if (event.key === 'Escape') setEditingIndex(null)
                           }}
-                          autoFocus
                         />
-                        <button
-                          className="btn btn-primary btn-sm"
-                          style={{ padding: '2px 6px' }}
-                          disabled={isSavingEdit || !editMemberValue.trim()}
-                          onClick={() => handleEditSave(member.member)}
-                        >
-                          <Save size={11} />
-                        </button>
-                        <button className="btn btn-ghost btn-sm" style={{ padding: '2px 6px' }} onClick={() => setEditingMember(null)}>
-                          <X size={11} />
-                        </button>
                       </div>
                     ) : (
-                      formatMemberValue(member)
+                      formatMemberValue(m)
                     )}
                   </td>
                   <td style={{ textAlign: 'center' }}>{rowActions}</td>
                 </tr>
               )
             })}
-            {filteredMembers.length === 0 && !isLoading && (
+            {members.length === 0 && !isLoading && (
               <tr>
-                <td colSpan={3} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 24 }}>
-                  {searchTerm ? t('set.noMatching') : t('set.noMembers')}
+                <td colSpan={4} style={{ textAlign: 'center', color: 'var(--text-tertiary)', padding: 24 }}>
+                  {t('zset.noMembers')}
                 </td>
               </tr>
             )}
@@ -402,10 +441,9 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
       {hasMore && (
         <button className="btn btn-secondary btn-sm" onClick={() => loadData(true)} disabled={isLoading} style={{ alignSelf: 'center' }}>
           <ChevronDown size={13} />
-          {isLoading ? t('set.loading') : t('set.loadMore')}
+          {isLoading ? t('zset.loading') : t('zset.loadMore')}
         </button>
       )}
-
       <ConfirmDeleteDialog
         open={deleteTarget != null}
         target={deleteTarget ? formatMemberValue(deleteTarget) : ''}
@@ -413,9 +451,8 @@ const SetEditor: React.FC<SetEditorProps> = ({ connectionId, keyName }) => {
         onCancel={() => setDeleteTarget(null)}
         onConfirm={() => deleteTarget && handleDelete(deleteTarget.member)}
       />
-
     </div>
   )
 }
 
-export default React.memo(SetEditor)
+export default React.memo(ZSetEditor)

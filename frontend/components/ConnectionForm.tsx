@@ -3,7 +3,7 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Server, Plus, X, Loader2, Check, AlertCircle } from 'lucide-react'
 import { useAppStore } from '../store/appStore'
 import { useConnectionStore } from '../store/connectionStore'
-import type { ConnectionConfig } from '../../shared/types'
+import type { ConnectionConfig } from '../shared/types'
 import { useI18n } from '../i18n'
 
 type ConnectionType = ConnectionConfig['type']
