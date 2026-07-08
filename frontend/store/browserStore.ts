@@ -134,7 +134,10 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
           keys: [...keys, ...scopeKeys(scanData.keys, targetConnectionId, scanData.db)],
           hasMore: scanData.hasMore,
           totalScanned: scanData.totalScanned ?? (keys.length + scanData.keys.length),
-          sessionId: scanData.sessionId ?? scanData.cursor ?? null,
+          // The backend keeps the same session key across pages and does not
+          // echo sessionId back on scan_next — keep the existing one rather than
+          // overwriting it with the cursor (which breaks the next page fetch).
+          sessionId,
           isLoading: false,
         })
       } else {
