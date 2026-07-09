@@ -18,7 +18,7 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 base64 = "0.22"
 keyring = "3"
-rand = "0.8"
+rand = "0.9"
 redis = { version = "0.32", features = ["tokio-rustls-comp", "connection-manager", "cluster-async", "sentinel"] }
 ring = "0.17"
 serde = { version = "1", features = ["derive"] }
