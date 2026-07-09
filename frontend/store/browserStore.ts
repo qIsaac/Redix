@@ -1,5 +1,11 @@
 import { create } from 'zustand'
-import type { KeyInfo, ScanResult } from '../shared/types'
+import type { IPCResponse, KeyInfo, ScanResult } from '../shared/types'
+
+/** Tracks a resumable SCAN session for one tree prefix ("load children"). */
+interface PrefixScanState {
+  sessionId: string | null
+  hasMore: boolean
+}
 
 interface BrowserStore {
   // State
@@ -13,13 +19,16 @@ interface BrowserStore {
   typeFilter: string | null
   totalScanned: number
   requestId: number
+  // Per-prefix scan sessions for tree "load children" pagination, keyed by prefix.
+  prefixScans: Record<string, PrefixScanState>
 
   // Actions
   startScan: (connectionId: string, pattern?: string, typeFilter?: string | null, db?: number) => Promise<void>
   loadNextPage: () => Promise<void>
   searchKeys: (connectionId: string, pattern: string) => Promise<void>
-  scanWithPrefix: (connectionId: string, prefix: string, db?: number) => Promise<void>
+  scanWithPrefix: (connectionId: string, prefix: string, db?: number, typeFilter?: string | null) => Promise<void>
   selectKey: (key: KeyInfo | null) => void
+  refreshSelectedKey: (connectionId: string) => Promise<void>
   setSearchTerm: (term: string) => void
   setTypeFilter: (type: string | null) => void
   deleteKey: (connectionId: string, key: string) => Promise<void>
@@ -39,6 +48,7 @@ const initialState = {
   typeFilter: null,
   totalScanned: 0,
   requestId: 0,
+  prefixScans: {},
 }
 
 function scopeKeys(keys: KeyInfo[], connectionId: string, db?: number): KeyInfo[] {
@@ -60,6 +70,24 @@ function canKeepSelectedKey(key: KeyInfo | null, connectionId: string, db?: numb
   return true
 }
 
+export const MIN_KEY_SEARCH_CHARS = 2
+
+export function hasSearchGlobPattern(pattern: string): boolean {
+  return /[*?[\]]/.test(pattern)
+}
+
+export function isPlainSearchTooShort(pattern?: string): boolean {
+  const trimmed = pattern?.trim()
+  return Boolean(trimmed && !hasSearchGlobPattern(trimmed) && Array.from(trimmed).length < MIN_KEY_SEARCH_CHARS)
+}
+
+function normalizeSearchPattern(pattern?: string): string | undefined | null {
+  const trimmed = pattern?.trim()
+  if (!trimmed) return undefined
+  if (isPlainSearchTooShort(trimmed)) return null
+  return hasSearchGlobPattern(trimmed) ? trimmed : `*${trimmed}*`
+}
+
 function resolveSelectedKey(
   selectedKey: KeyInfo | null,
   keys: KeyInfo[],
@@ -78,12 +106,17 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   ...initialState,
 
   startScan: async (connectionId: string, pattern?: string, typeFilter?: string | null, db?: number) => {
+    const scanPattern = normalizeSearchPattern(pattern)
     const requestId = get().requestId + 1
     // When switching databases or changing filters, always clear the selected key to avoid showing data from wrong database
     // This ensures we don't display a key that exists in both old and new databases but has different data
-    set({ isLoading: true, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId, requestId })
+    if (scanPattern === null) {
+      set({ isLoading: false, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId, requestId, prefixScans: {} })
+      return
+    }
+    set({ isLoading: true, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId, requestId, prefixScans: {} })
     try {
-      const result = await window.redixAPI.scan.start(connectionId, pattern, typeFilter ?? undefined, db) as {
+      const result = await window.redixAPI.scan.start(connectionId, scanPattern, typeFilter ?? undefined, db) as {
         success: boolean
         data?: ScanResult & { sessionId?: string }
         error?: { message: string }
@@ -94,7 +127,7 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
         const targetConnectionId = scanData.connectionId ?? connectionId
         const targetDb = scanData.db ?? db
         const scopedKeys = scopeKeys(scanData.keys, targetConnectionId, targetDb)
-        const preserveMissing = Boolean(pattern?.trim() || typeFilter)
+        const preserveMissing = Boolean(scanPattern || typeFilter)
         set({
           keys: scopedKeys,
           selectedKey: resolveSelectedKey(get().selectedKey, scopedKeys, targetConnectionId, targetDb, !scanData.hasMore, preserveMissing),
@@ -150,15 +183,20 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
   },
 
   searchKeys: async (connectionId: string, pattern: string) => {
-    if (!pattern.trim()) {
+    const searchPattern = normalizeSearchPattern(pattern)
+    const requestId = get().requestId + 1
+    if (searchPattern === null) {
+      set({ isLoading: false, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId, requestId, prefixScans: {} })
+      return
+    }
+    if (!searchPattern) {
       // Empty search — restart normal scan
       get().startScan(connectionId)
       return
     }
-    const requestId = get().requestId + 1
-    set({ isLoading: true, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId, requestId })
+    set({ isLoading: true, keys: [], selectedKey: null, hasMore: false, totalScanned: 0, sessionId: null, connectionId, requestId, prefixScans: {} })
     try {
-      const result = await window.redixAPI.scan.search(connectionId, pattern) as {
+      const result = await window.redixAPI.scan.search(connectionId, searchPattern) as {
         success: boolean
         data?: ScanResult
         error?: { message: string }
@@ -182,13 +220,22 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
     }
   },
 
-  scanWithPrefix: async (connectionId: string, prefix: string, db?: number) => {
-    const { isLoading, keys: existingKeys, requestId } = get()
+  scanWithPrefix: async (connectionId: string, prefix: string, db?: number, typeFilter?: string | null) => {
+    const { isLoading, keys: existingKeys, requestId, prefixScans } = get()
     if (isLoading) return
+
+    // Resume the existing session for this prefix if one is already open, so a
+    // repeated "load children" fetches the NEXT page instead of restarting at
+    // cursor 0 (which would return the same keys and appear to do nothing).
+    const existing = prefixScans[prefix]
+    const canResume = Boolean(existing?.sessionId && existing.hasMore)
+    if (existing && !existing.hasMore) return // already fully loaded for this prefix
+
     set({ isLoading: true })
     try {
-      const pattern = `${prefix}:*`
-      const result = await window.redixAPI.scan.start(connectionId, pattern, undefined, db) as {
+      const result = (canResume
+        ? await window.redixAPI.scan.next(existing!.sessionId!, connectionId)
+        : await window.redixAPI.scan.start(connectionId, `${prefix}:*`, typeFilter ?? undefined, db)) as {
         success: boolean
         data?: ScanResult & { sessionId?: string }
         error?: { message: string }
@@ -200,13 +247,17 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
         // Merge new keys with existing, avoiding duplicates
         const existingKeySet = new Set(existingKeys.map((k) => k.key))
         const newKeys = scopeKeys(scanData.keys, targetConnectionId, scanData.db).filter((k) => !existingKeySet.has(k.key))
-        set({
+        // scan_next does not echo sessionId; keep the one we resumed from.
+        const nextSessionId = scanData.sessionId ?? existing?.sessionId ?? scanData.cursor ?? null
+        set((state) => ({
           keys: [...existingKeys, ...newKeys],
-          hasMore: scanData.hasMore,
-          totalScanned: (existingKeys.length + scanData.keys.length),
-          sessionId: scanData.sessionId ?? scanData.cursor ?? null,
+          totalScanned: existingKeys.length + scanData.keys.length,
           isLoading: false,
-        })
+          prefixScans: {
+            ...state.prefixScans,
+            [prefix]: { sessionId: nextSessionId, hasMore: scanData.hasMore },
+          },
+        }))
       } else {
         set({ isLoading: false })
       }
@@ -217,6 +268,28 @@ export const useBrowserStore = create<BrowserStore>((set, get) => ({
 
   selectKey: (key: KeyInfo | null) => {
     set({ selectedKey: key })
+  },
+
+  refreshSelectedKey: async (connectionId: string) => {
+    const selectedKey = get().selectedKey
+    if (!selectedKey) return
+    if (selectedKey.connectionId && selectedKey.connectionId !== connectionId) return
+    try {
+      const result = await window.redixAPI.key.info(connectionId, selectedKey.key) as IPCResponse<KeyInfo>
+      // Only update if this key is still the selected one (guards against races on fast key switches)
+      if (get().selectedKey?.key !== selectedKey.key) return
+      if (!result.success || !result.data) return
+      const info = result.data
+      set((state) => {
+        const merged: KeyInfo = { ...selectedKey, ...info }
+        return {
+          keys: state.keys.map((k) => (k.key === selectedKey.key ? { ...k, ...merged } : k)),
+          selectedKey: state.selectedKey?.key === selectedKey.key ? merged : state.selectedKey,
+        }
+      })
+    } catch {
+      // silently fail — header simply keeps its previous values
+    }
   },
 
   setSearchTerm: (term: string) => {

@@ -40,6 +40,9 @@ interface DataAPI {
 
 interface CLIAPI {
   execute: (connectionId: string, command: string, confirmed?: boolean) => Promise<unknown>
+  completeKeys: (connectionId: string, prefix: string, limit?: number, typeFilter?: string) => Promise<unknown>
+  completeHashFields: (connectionId: string, key: string, prefix: string, limit?: number) => Promise<unknown>
+  completeMembers: (connectionId: string, key: string, prefix: string, kind: string, limit?: number) => Promise<unknown>
 }
 
 interface ClipboardAPI {

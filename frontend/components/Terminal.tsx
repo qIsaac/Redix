@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react'
 import { Terminal as XTerm } from '@xterm/xterm'
 import { FitAddon } from '@xterm/addon-fit'
 import { useConnectionStore } from '../store/connectionStore'
-import type { CLIResult, IPCResponse } from '../shared/types'
+import type { CLIHashFieldCompletionResult, CLIKeyCompletionResult, CLIMemberCompletionResult, CLIResult, IPCResponse } from '../shared/types'
 import { DANGEROUS_COMMANDS } from '../shared/constants'
 import '@xterm/xterm/css/xterm.css'
 import { useI18n } from '../i18n'
@@ -329,12 +329,54 @@ const NEXT_TOKEN_SUGGESTIONS: Record<string, string[][]> = {
   LPUSH: [['key'], ['element', 'element ...']],
   RPUSH: [['key'], ['element', 'element ...']],
   LRANGE: [['key'], ['0'], ['-1', 'stop']],
+  LINDEX: [['key'], ['index']],
+  LLEN: [['key']],
+  LPOP: [['key'], ['count']],
+  RPOP: [['key'], ['count']],
+  LREM: [['key'], ['count'], ['element']],
+  LSET: [['key'], ['index'], ['element']],
+  LTRIM: [['key'], ['start'], ['stop']],
+  LPOS: [['key'], ['element'], ['RANK rank', 'COUNT count', 'MAXLEN len']],
+  LINSERT: [['key'], ['BEFORE', 'AFTER'], ['pivot'], ['element']],
+  RPOPLPUSH: [['source'], ['destination']],
+  LMOVE: [['source'], ['destination'], ['LEFT', 'RIGHT'], ['LEFT', 'RIGHT']],
   SADD: [['key'], ['member', 'member ...']],
+  SREM: [['key'], ['member', 'member ...']],
+  SISMEMBER: [['key'], ['member']],
   SMEMBERS: [['key']],
+  SMISMEMBER: [['key'], ['member', 'member ...']],
+  SPOP: [['key'], ['count']],
+  SRANDMEMBER: [['key'], ['count']],
+  SMOVE: [['source'], ['destination'], ['member']],
+  SDIFF: [['key'], ['key', 'key ...']],
+  SINTER: [['key'], ['key', 'key ...']],
+  SUNION: [['key'], ['key', 'key ...']],
+  SDIFFSTORE: [['destination'], ['key'], ['key', 'key ...']],
+  SINTERSTORE: [['destination'], ['key'], ['key', 'key ...']],
+  SUNIONSTORE: [['destination'], ['key'], ['key', 'key ...']],
   ZADD: [['key'], ['score'], ['member', 'score member ...'], ['NX', 'XX', 'CH', 'INCR']],
   ZRANGE: [['key'], ['0', 'start'], ['-1', 'stop'], ['WITHSCORES', 'REV', 'BYSCORE', 'BYLEX', 'LIMIT offset count']],
+  ZREM: [['key'], ['member', 'member ...']],
+  ZSCORE: [['key'], ['member']],
+  ZRANK: [['key'], ['member']],
+  ZREVRANK: [['key'], ['member']],
+  ZINCRBY: [['key'], ['increment'], ['member']],
+  ZCOUNT: [['key'], ['min'], ['max']],
+  ZLEXCOUNT: [['key'], ['min'], ['max']],
+  ZPOPMIN: [['key'], ['count']],
+  ZPOPMAX: [['key'], ['count']],
+  ZRANDMEMBER: [['key'], ['count'], ['WITHSCORES']],
+  ZDIFF: [['numkeys'], ['key', 'key ...'], ['WITHSCORES']],
+  ZINTER: [['numkeys'], ['key', 'key ...'], ['WEIGHTS weight ...', 'AGGREGATE SUM|MIN|MAX', 'WITHSCORES']],
+  ZUNION: [['numkeys'], ['key', 'key ...'], ['WEIGHTS weight ...', 'AGGREGATE SUM|MIN|MAX', 'WITHSCORES']],
+  ZDIFFSTORE: [['destination'], ['numkeys'], ['key', 'key ...']],
+  ZINTERSTORE: [['destination'], ['numkeys'], ['key', 'key ...'], ['WEIGHTS weight ...', 'AGGREGATE SUM|MIN|MAX']],
+  ZUNIONSTORE: [['destination'], ['numkeys'], ['key', 'key ...'], ['WEIGHTS weight ...', 'AGGREGATE SUM|MIN|MAX']],
   XADD: [['key'], ['*', 'ID'], ['field'], ['value', 'field value ...']],
   XRANGE: [['key'], ['-', 'start'], ['+', 'end'], ['COUNT count']],
+  XLEN: [['key']],
+  XDEL: [['key'], ['ID', 'ID ...']],
+  XTRIM: [['key'], ['MAXLEN', 'MINID'], ['threshold']],
   XREAD: [['COUNT count', 'BLOCK milliseconds', 'STREAMS']],
   PING: [['message']],
   INFO: [['server', 'clients', 'memory', 'persistence', 'stats', 'replication', 'cpu', 'keyspace']],
@@ -343,8 +385,86 @@ const NEXT_TOKEN_SUGGESTIONS: Record<string, string[][]> = {
   'CONFIG SET': [['parameter', 'maxmemory', 'timeout'], ['value']],
   'CLIENT LIST': [['TYPE normal|master|replica|pubsub', 'ID client-id']],
   'MEMORY USAGE': [['key'], ['SAMPLES count']],
+  COPY: [['source'], ['destination'], ['DB db', 'REPLACE']],
+  RENAME: [['key'], ['newkey']],
+  RENAMENX: [['key'], ['newkey']],
+  BITOP: [['AND', 'OR', 'XOR', 'NOT'], ['destination'], ['key', 'key ...']],
+  PFCOUNT: [['key', 'key ...']],
+  PFMERGE: [['destination'], ['source', 'source ...']],
   'SLOWLOG GET': [['count']],
 }
+
+const MULTI_KEY_COMMANDS = new Set([
+  'DEL', 'EXISTS', 'MGET', 'TOUCH', 'UNLINK',
+])
+
+const PAIR_KEY_COMMANDS = new Set([
+  'MSET', 'MSETNX',
+])
+
+type RedisKeyType = 'string' | 'hash' | 'list' | 'set' | 'zset' | 'stream'
+
+const FIRST_KEY_COMMANDS = new Set([
+  'APPEND', 'BITCOUNT', 'BITFIELD', 'BITOP', 'BITPOS', 'COPY', 'DECR', 'DECRBY',
+  'DUMP', 'EXPIRE', 'EXPIREAT', 'EXPIRETIME', 'GET', 'GETDEL', 'GETEX', 'GETRANGE',
+  'GETSET', 'HDEL', 'HEXISTS', 'HGET', 'HGETALL', 'HINCRBY', 'HINCRBYFLOAT',
+  'HKEYS', 'HLEN', 'HMGET', 'HMSET', 'HRANDFIELD', 'HSCAN', 'HSET', 'HSETNX',
+  'HSTRLEN', 'HVALS', 'INCR', 'INCRBY', 'INCRBYFLOAT', 'LINDEX', 'LINSERT',
+  'LLEN', 'LMOVE', 'LMPOP', 'LPOP', 'LPOS', 'LPUSH', 'LPUSHX', 'LRANGE', 'LREM',
+  'LSET', 'LTRIM', 'MEMORY USAGE', 'OBJECT ENCODING', 'OBJECT FREQ',
+  'OBJECT IDLETIME', 'OBJECT REFCOUNT', 'OBJECT TOUCH', 'PERSIST', 'PEXPIRE',
+  'PEXPIREAT', 'PEXPIRETIME', 'PFADD', 'PFCOUNT', 'PFMERGE', 'PTTL', 'RENAME',
+  'RENAMENX', 'RESTORE', 'RPOP', 'RPOPLPUSH', 'RPUSH', 'RPUSHX', 'SADD', 'SCARD',
+  'SDIFF', 'SDIFFSTORE', 'SET', 'SETEX', 'SETNX', 'PSETEX', 'SINTER', 'SINTERCARD',
+  'SINTERSTORE', 'SISMEMBER', 'SMEMBERS', 'SMISMEMBER', 'SMOVE', 'SORT', 'SPOP',
+  'SRANDMEMBER', 'SREM', 'SSCAN', 'STRLEN', 'SUNION', 'SUNIONSTORE', 'TYPE', 'TTL',
+  'XACK', 'XADD', 'XCLAIM', 'XDEL', 'XGROUP', 'XINFO STREAM', 'XLEN', 'XRANGE',
+  'XREADGROUP', 'XREVRANGE', 'XTRIM', 'ZADD', 'ZCARD', 'ZCOUNT', 'ZDIFF', 'ZDIFFSTORE',
+  'ZINCRBY', 'ZINTER', 'ZINTERCARD', 'ZINTERSTORE', 'ZLEXCOUNT', 'ZMPOP',
+  'ZPOPMAX', 'ZPOPMIN', 'ZRANDMEMBER', 'ZRANGE', 'ZRANGEBYLEX', 'ZRANGEBYSCORE',
+  'ZRANK', 'ZREM', 'ZREMRANGEBYLEX', 'ZREMRANGEBYRANK', 'ZREMRANGEBYSCORE',
+  'ZREVRANGE', 'ZREVRANGEBYLEX', 'ZREVRANGEBYSCORE', 'ZREVRANK', 'ZSCAN',
+  'ZSCORE', 'ZUNION', 'ZUNIONSTORE',
+])
+
+const STRING_KEY_COMMANDS = new Set([
+  'APPEND', 'BITCOUNT', 'BITFIELD', 'BITPOS', 'DECR', 'DECRBY', 'GET', 'GETDEL',
+  'GETEX', 'GETRANGE', 'GETSET', 'INCR', 'INCRBY', 'INCRBYFLOAT', 'MGET',
+  'MSET', 'MSETNX', 'PFADD', 'PFCOUNT', 'PFMERGE', 'PSETEX', 'SET', 'SETEX',
+  'SETNX', 'SETRANGE', 'STRLEN',
+])
+
+const HASH_KEY_COMMANDS = new Set([
+  'HDEL', 'HEXISTS', 'HGET', 'HGETALL', 'HINCRBY', 'HINCRBYFLOAT', 'HKEYS',
+  'HLEN', 'HMGET', 'HMSET', 'HRANDFIELD', 'HSCAN', 'HSET', 'HSETNX', 'HSTRLEN',
+  'HVALS',
+])
+
+const LIST_KEY_COMMANDS = new Set([
+  'LINDEX', 'LINSERT', 'LLEN', 'LMOVE', 'LMPOP', 'LPOP', 'LPOS', 'LPUSH',
+  'LPUSHX', 'LRANGE', 'LREM', 'LSET', 'LTRIM', 'RPOP', 'RPOPLPUSH', 'RPUSH',
+  'RPUSHX',
+])
+
+const SET_KEY_COMMANDS = new Set([
+  'SADD', 'SCARD', 'SDIFF', 'SDIFFSTORE', 'SINTER', 'SINTERCARD', 'SINTERSTORE',
+  'SISMEMBER', 'SMEMBERS', 'SMISMEMBER', 'SMOVE', 'SPOP', 'SRANDMEMBER',
+  'SREM', 'SSCAN', 'SUNION', 'SUNIONSTORE',
+])
+
+const ZSET_KEY_COMMANDS = new Set([
+  'BZMPOP', 'ZADD', 'ZCARD', 'ZCOUNT', 'ZDIFF', 'ZDIFFSTORE', 'ZINCRBY',
+  'ZINTER', 'ZINTERCARD', 'ZINTERSTORE', 'ZLEXCOUNT', 'ZMPOP', 'ZPOPMAX',
+  'ZPOPMIN', 'ZRANDMEMBER', 'ZRANGE', 'ZRANGEBYLEX', 'ZRANGEBYSCORE', 'ZRANK',
+  'ZREM', 'ZREMRANGEBYLEX', 'ZREMRANGEBYRANK', 'ZREMRANGEBYSCORE', 'ZREVRANGE',
+  'ZREVRANGEBYLEX', 'ZREVRANGEBYSCORE', 'ZREVRANK', 'ZSCAN', 'ZSCORE',
+  'ZUNION', 'ZUNIONSTORE',
+])
+
+const STREAM_KEY_COMMANDS = new Set([
+  'XACK', 'XADD', 'XCLAIM', 'XDEL', 'XGROUP', 'XINFO STREAM', 'XLEN', 'XRANGE',
+  'XREADGROUP', 'XREVRANGE', 'XTRIM',
+])
 
 const COMMAND_CATALOG = Array.from(new Set(REDIS_COMMANDS)).sort((a, b) => a.localeCompare(b))
 const COMMANDS_BY_SPECIFICITY = [...COMMAND_CATALOG].sort((a, b) => {
@@ -415,6 +535,88 @@ const copyTerminalSelection = (term: XTerm, event?: ClipboardEvent | KeyboardEve
 
 const splitWords = (input: string): string[] => input.trim().split(/\s+/).filter(Boolean)
 
+interface InputToken {
+  value: string
+  start: number
+  end: number
+}
+
+interface CompletionRange {
+  start: number
+  end: number
+  value: string
+  tokenIndex: number
+}
+
+interface KeyCompletionContext {
+  prefix: string
+  range: CompletionRange
+  typeFilter?: RedisKeyType
+  acceptCursorEnd?: number
+  replaceEnd?: number
+}
+
+interface HashFieldCompletionContext {
+  key: string
+  keyRange: CompletionRange
+  prefix: string
+  range: CompletionRange
+}
+
+interface MemberCompletionContext {
+  key: string
+  kind: 'set' | 'zset'
+  prefix: string
+  range: CompletionRange
+}
+
+interface PendingTokenCompletion {
+  start: number
+  end: number
+  acceptCursorEnd?: number
+  replaceEnd?: number
+  prefix: string
+  value: string
+  appendSpace?: boolean
+  inputVersion: number
+}
+
+const tokenizeWithRanges = (input: string): InputToken[] => {
+  const tokens: InputToken[] = []
+  const matcher = /\S+/g
+  let match: RegExpExecArray | null
+  while ((match = matcher.exec(input)) !== null) {
+    tokens.push({
+      value: match[0],
+      start: match.index,
+      end: match.index + match[0].length,
+    })
+  }
+  return tokens
+}
+
+const getCompletionRange = (input: string, cursor: number): CompletionRange => {
+  const tokens = tokenizeWithRanges(input)
+  const tokenIndex = tokens.findIndex((token) => cursor >= token.start && cursor <= token.end)
+  if (tokenIndex >= 0) {
+    const token = tokens[tokenIndex]
+    return {
+      start: token.start,
+      end: token.end,
+      value: input.slice(token.start, cursor),
+      tokenIndex,
+    }
+  }
+
+  const tokensBeforeCursor = tokens.filter((token) => token.end <= cursor).length
+  return {
+    start: cursor,
+    end: cursor,
+    value: '',
+    tokenIndex: tokensBeforeCursor,
+  }
+}
+
 const getCommandRoot = (command: string): string => command.split(/\s+/)[0]?.toUpperCase() ?? ''
 
 const getCommandForInput = (input: string): string | null => {
@@ -450,6 +652,201 @@ const getCommandMatches = (input: string): string[] => {
   }
 
   return COMMAND_CATALOG.filter((command) => command.startsWith(query))
+}
+
+const isKeyArgument = (command: string, argumentIndex: number): boolean => {
+  if (argumentIndex < 0) return false
+
+  const root = getCommandRoot(command)
+  if (MULTI_KEY_COMMANDS.has(root)) return true
+  if (PAIR_KEY_COMMANDS.has(root)) return argumentIndex % 2 === 0
+  if (['COPY', 'RENAME', 'RENAMENX', 'RPOPLPUSH', 'LMOVE'].includes(root)) {
+    return argumentIndex === 0 || argumentIndex === 1
+  }
+  if (root === 'SMOVE') return argumentIndex === 0 || argumentIndex === 1
+  if (root === 'BITOP') return argumentIndex >= 1
+  if (['SDIFF', 'SINTER', 'SUNION', 'ZDIFF', 'ZINTER', 'ZUNION'].includes(root)) {
+    return argumentIndex >= 1
+  }
+  if (['SDIFFSTORE', 'SINTERSTORE', 'SUNIONSTORE'].includes(root)) return true
+  if (['ZDIFFSTORE', 'ZINTERSTORE', 'ZUNIONSTORE'].includes(root)) {
+    return argumentIndex === 0 || argumentIndex >= 2
+  }
+  if (root === 'PFMERGE') return true
+  if (root === 'PFCOUNT') return true
+  return FIRST_KEY_COMMANDS.has(command) || FIRST_KEY_COMMANDS.has(root)
+    ? argumentIndex === 0
+    : false
+}
+
+const getKeyTypeForCommand = (command: string): RedisKeyType | undefined => {
+  const root = getCommandRoot(command)
+  const matchesCommand = (commands: Set<string>): boolean => commands.has(command) || commands.has(root)
+
+  if (matchesCommand(STRING_KEY_COMMANDS)) return 'string'
+  if (matchesCommand(HASH_KEY_COMMANDS)) return 'hash'
+  if (matchesCommand(LIST_KEY_COMMANDS)) return 'list'
+  if (matchesCommand(SET_KEY_COMMANDS)) return 'set'
+  if (matchesCommand(ZSET_KEY_COMMANDS)) return 'zset'
+  if (matchesCommand(STREAM_KEY_COMMANDS)) return 'stream'
+  return undefined
+}
+
+const isHashFieldArgument = (command: string, argumentIndex: number): boolean => {
+  const root = getCommandRoot(command)
+  if (argumentIndex < 1 || root[0] !== 'H') return false
+  if (['HGET', 'HEXISTS', 'HINCRBY', 'HINCRBYFLOAT', 'HSETNX', 'HSTRLEN'].includes(root)) {
+    return argumentIndex === 1
+  }
+  if (['HDEL', 'HMGET'].includes(root)) return argumentIndex >= 1
+  if (['HSET', 'HMSET'].includes(root)) return argumentIndex % 2 === 1
+  return false
+}
+
+const getMemberCompletionKind = (command: string, argumentIndex: number): 'set' | 'zset' | null => {
+  const root = getCommandRoot(command)
+  if (argumentIndex < 1) return null
+
+  if (['SADD', 'SREM', 'SMISMEMBER'].includes(root)) return 'set'
+  if (['SISMEMBER'].includes(root)) return argumentIndex === 1 ? 'set' : null
+  if (root === 'SMOVE') return argumentIndex === 2 ? 'set' : null
+
+  if (['ZREM'].includes(root)) return 'zset'
+  if (['ZSCORE', 'ZRANK', 'ZREVRANK'].includes(root)) return argumentIndex === 1 ? 'zset' : null
+  if (root === 'ZINCRBY') return argumentIndex === 2 ? 'zset' : null
+  return null
+}
+
+const stripOpeningQuote = (value: string): string =>
+  value.startsWith('"') || value.startsWith("'") ? value.slice(1) : value
+
+const unquoteCliToken = (value: string): string => {
+  if (value.length >= 2) {
+    const quote = value[0]
+    if ((quote === '"' || quote === "'") && value[value.length - 1] === quote) {
+      return value.slice(1, -1).replace(/\\(.)/g, '$1')
+    }
+  }
+  return value
+}
+
+const quoteCliArgIfNeeded = (value: string): string => {
+  if (value && !/[\s"'\\]/.test(value)) return value
+  return `"${value.replace(/\\/g, '\\\\').replace(/"/g, '\\"')}"`
+}
+
+const longestCommonPrefix = (values: string[]): string => {
+  if (values.length === 0) return ''
+
+  let prefix = values[0]
+  for (const value of values.slice(1)) {
+    let index = 0
+    while (index < prefix.length && index < value.length && prefix[index] === value[index]) {
+      index += 1
+    }
+    prefix = prefix.slice(0, index)
+    if (!prefix) break
+  }
+  return prefix
+}
+
+const isKeyNamespaceCandidate = (prefix: string, value: string): boolean =>
+  value.length > prefix.length && value.endsWith(':')
+
+const sortKeySegmentCandidates = (prefix: string, candidates: string[]): string[] =>
+  [...candidates].sort((left, right) => {
+    const leftIsNamespace = isKeyNamespaceCandidate(prefix, left)
+    const rightIsNamespace = isKeyNamespaceCandidate(prefix, right)
+    if (leftIsNamespace !== rightIsNamespace) return leftIsNamespace ? -1 : 1
+    return left.localeCompare(right)
+  })
+
+const getNextKeySegmentCandidates = (prefix: string, keys: string[]): string[] => {
+  const candidates = new Set<string>()
+  for (const key of keys) {
+    if (!key.startsWith(prefix) || key === prefix) continue
+
+    const remaining = key.slice(prefix.length)
+    const nextSeparator = remaining.indexOf(':')
+    candidates.add(nextSeparator >= 0 ? `${prefix}${remaining.slice(0, nextSeparator + 1)}` : key)
+  }
+
+  return sortKeySegmentCandidates(prefix, Array.from(candidates))
+}
+
+const formatKeySegmentOptions = (prefix: string, candidates: string[]): string => {
+  const labels = candidates.slice(0, 8).map((candidate) => {
+    const label = candidate.slice(prefix.length)
+    return label.endsWith(':') ? label.slice(0, -1) : label
+  })
+  const more = candidates.length > labels.length ? ` | +${candidates.length - labels.length}` : ''
+  return ` ${labels.join(' | ')}${more}`
+}
+
+const getKeyCompletionContext = (input: string, cursor: number): KeyCompletionContext | null => {
+  const beforeCursor = input.slice(0, cursor)
+  const command = getCommandForInput(beforeCursor)
+  if (!command) return null
+
+  const range = getCompletionRange(input, cursor)
+  const argumentIndex = range.tokenIndex - command.split(' ').length
+  if (!isKeyArgument(command, argumentIndex)) return null
+
+  return {
+    prefix: stripOpeningQuote(range.value),
+    range,
+    typeFilter: getKeyTypeForCommand(command),
+  }
+}
+
+const getHashFieldCompletionContext = (input: string, cursor: number): HashFieldCompletionContext | null => {
+  const beforeCursor = input.slice(0, cursor)
+  const command = getCommandForInput(beforeCursor)
+  if (!command) return null
+
+  const tokens = tokenizeWithRanges(input)
+  const commandTokenCount = command.split(' ').length
+  const keyToken = tokens[commandTokenCount]
+  if (!keyToken) return null
+
+  const range = getCompletionRange(input, cursor)
+  const argumentIndex = range.tokenIndex - commandTokenCount
+  if (!isHashFieldArgument(command, argumentIndex)) return null
+
+  return {
+    key: unquoteCliToken(keyToken.value),
+    keyRange: {
+      start: keyToken.start,
+      end: keyToken.end,
+      value: stripOpeningQuote(keyToken.value),
+      tokenIndex: commandTokenCount,
+    },
+    prefix: stripOpeningQuote(range.value),
+    range,
+  }
+}
+
+const getMemberCompletionContext = (input: string, cursor: number): MemberCompletionContext | null => {
+  const beforeCursor = input.slice(0, cursor)
+  const command = getCommandForInput(beforeCursor)
+  if (!command) return null
+
+  const tokens = tokenizeWithRanges(input)
+  const commandTokenCount = command.split(' ').length
+  const keyToken = tokens[commandTokenCount]
+  if (!keyToken) return null
+
+  const range = getCompletionRange(input, cursor)
+  const argumentIndex = range.tokenIndex - commandTokenCount
+  const kind = getMemberCompletionKind(command, argumentIndex)
+  if (!kind) return null
+
+  return {
+    key: unquoteCliToken(keyToken.value),
+    kind,
+    prefix: stripOpeningQuote(range.value),
+    range,
+  }
 }
 
 const levenshteinDistance = (left: string, right: string): number => {
@@ -539,12 +936,55 @@ const getNextTokenSuggestions = (input: string): string[] => {
   const suggestions = NEXT_TOKEN_SUGGESTIONS[command]
     ?? NEXT_TOKEN_SUGGESTIONS[getCommandRoot(command)]
 
-  return suggestions?.[argumentCount] ?? suggestions?.[suggestions.length - 1] ?? []
+  if (!suggestions) return []
+  if (argumentCount < suggestions.length) return suggestions[argumentCount]
+
+  const repeatableSuggestions = suggestions[suggestions.length - 1]
+  return repeatableSuggestions.some((suggestion) => suggestion.includes('...'))
+    ? repeatableSuggestions
+    : []
 }
 
 const formatGhostHint = (suggestions: string[]): string => {
   const hint = suggestions.slice(0, 5).join(' | ')
   return hint.length > 70 ? `${hint.slice(0, 67)}...` : hint
+}
+
+const charTerminalWidth = (char: string): number => {
+  const codePoint = char.codePointAt(0) ?? 0
+  if (codePoint === 0) return 0
+  if (codePoint < 0x20 || (codePoint >= 0x7f && codePoint < 0xa0)) return 0
+  return codePoint > 0x1100 ? 2 : 1
+}
+
+const terminalTextWidth = (text: string): number =>
+  Array.from(text).reduce((width, char) => width + charTerminalWidth(char), 0)
+
+const sliceTerminalText = (text: string, maxWidth: number): string => {
+  let width = 0
+  let output = ''
+  for (const char of Array.from(text)) {
+    const charWidth = charTerminalWidth(char)
+    if (width + charWidth > maxWidth) break
+    output += char
+    width += charWidth
+  }
+  return output
+}
+
+const fitGhostHintToCurrentLine = (term: XTerm, hint: string): { text: string; width: number } | null => {
+  const availableColumns = Math.max(0, term.cols - term.buffer.active.cursorX - 1)
+  if (availableColumns < 4) return null
+
+  const sanitized = escapeTerminalControls(hint)
+  const sanitizedWidth = terminalTextWidth(sanitized)
+  if (sanitizedWidth <= availableColumns) {
+    return { text: sanitized, width: sanitizedWidth }
+  }
+
+  const suffix = '...'
+  const clipped = `${sliceTerminalText(sanitized, availableColumns - suffix.length)}${suffix}`
+  return { text: clipped, width: terminalTextWidth(clipped) }
 }
 
 interface TerminalProps {
@@ -565,6 +1005,9 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
   const isConnectedRef = useRef(false)
   const connectionIdRef = useRef<string | null>(null)
   const ghostHintRef = useRef('')
+  const ghostHintColumnsRef = useRef(0)
+  const pendingTokenCompletionRef = useRef<PendingTokenCompletion | null>(null)
+  const inputVersionRef = useRef(0)
   const promptLabelRef = useRef('redis> ')
   const pendingDangerousCommandRef = useRef<string | null>(null)
 
@@ -602,18 +1045,38 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
   const clearGhostHint = useCallback((term: XTerm) => {
     const hint = ghostHintRef.current
+    pendingTokenCompletionRef.current = null
     if (!hint) return
 
-    term.write(`${' '.repeat(hint.length)}\x1b[${hint.length}D`)
+    const columns = ghostHintColumnsRef.current || terminalTextWidth(hint)
+    term.write(`${' '.repeat(columns)}\x1b[${columns}D`)
     ghostHintRef.current = ''
+    ghostHintColumnsRef.current = 0
   }, [])
 
   const renderGhostHint = useCallback((term: XTerm, suggestions: string[]) => {
     const hint = formatGhostHint(suggestions)
     if (!hint) return
 
-    ghostHintRef.current = hint
-    term.write(`\x1b[90m${hint}\x1b[0m\x1b[${hint.length}D`)
+    const fittedHint = fitGhostHintToCurrentLine(term, hint)
+    if (!fittedHint) return
+
+    ghostHintRef.current = fittedHint.text
+    ghostHintColumnsRef.current = fittedHint.width
+    term.write(`\x1b[90m${fittedHint.text}\x1b[0m\x1b[${fittedHint.width}D`)
+  }, [])
+
+  const renderInlineGhostHint = useCallback((term: XTerm, hint: string) => {
+    if (!hint) return
+
+    const fittedHint = fitGhostHintToCurrentLine(term, hint)
+    if (!fittedHint) {
+      return
+    }
+
+    ghostHintRef.current = fittedHint.text
+    ghostHintColumnsRef.current = fittedHint.width
+    term.write(`\x1b[90m${fittedHint.text}\x1b[0m\x1b[${fittedHint.width}D`)
   }, [])
 
   const executeCommand = useCallback(
@@ -765,29 +1228,106 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
 
     // isTerminalFocused removed — no longer needed after deduplicating event handlers
 
+    const moveCursorToInputOffset = (input: string, cursor: number): void => {
+      const promptColumns = terminalTextWidth(promptLabelRef.current)
+      const endColumns = promptColumns + terminalTextWidth(input)
+      const targetColumns = promptColumns + terminalTextWidth(input.slice(0, cursor))
+      const rowsUp = Math.floor(endColumns / term.cols) - Math.floor(targetColumns / term.cols)
+      const targetColumn = targetColumns % term.cols
+
+      if (rowsUp > 0) {
+        term.write(`\x1b[${rowsUp}A`)
+      }
+      term.write('\r')
+      if (targetColumn > 0) {
+        term.write(`\x1b[${targetColumn}C`)
+      }
+    }
+
     const eraseCurrentInput = (): void => {
       const buf = inputBufferRef.current
       const cursor = cursorIndexRef.current
-      const charsRight = buf.length - cursor
-      if (charsRight > 0) {
-        term.write(`\x1b[${charsRight}C`)
+      const promptColumns = terminalTextWidth(promptLabelRef.current)
+      const cursorColumns = promptColumns + terminalTextWidth(buf.slice(0, cursor))
+      const cursorRows = Math.floor(cursorColumns / term.cols)
+
+      if (cursorRows > 0) {
+        term.write(`\x1b[${cursorRows}A`)
       }
-      for (let i = 0; i < buf.length; i++) {
-        term.write('\b \b')
+      term.write('\r')
+      if (promptColumns > 0) {
+        term.write(`\x1b[${promptColumns}C`)
       }
+      term.write('\x1b[0J')
     }
 
     const redrawInput = (next: string, cursor = next.length): void => {
       clearGhostHint(term)
+      inputVersionRef.current += 1
       eraseCurrentInput()
       inputBufferRef.current = next
       cursorIndexRef.current = Math.max(0, Math.min(cursor, next.length))
       term.write(next)
-      const charsLeft = next.length - cursorIndexRef.current
-      if (charsLeft > 0) {
-        term.write(`\x1b[${charsLeft}D`)
+      if (cursorIndexRef.current < next.length) {
+        moveCursorToInputOffset(next, cursorIndexRef.current)
       }
       term.scrollToBottom()
+    }
+
+    const redrawPromptAndInput = (): void => {
+      term.write(`\r\n${formatPrompt(isConnectedRef.current, promptLabelRef.current)}`)
+      term.write(inputBufferRef.current)
+      cursorIndexRef.current = inputBufferRef.current.length
+      term.scrollToBottom()
+    }
+
+    const acceptPendingTokenCompletion = (): boolean => {
+      const pending = pendingTokenCompletionRef.current
+      if (!pending) return false
+
+      const buf = inputBufferRef.current
+      const acceptCursorEnd = pending.acceptCursorEnd ?? pending.end
+      if (
+        cursorIndexRef.current !== acceptCursorEnd
+        || buf.slice(pending.start, pending.end) !== pending.prefix
+        || pending.inputVersion !== inputVersionRef.current
+      ) {
+        pendingTokenCompletionRef.current = null
+        return false
+      }
+
+      const completed = pending.appendSpace === false
+        ? quoteCliArgIfNeeded(pending.value)
+        : `${quoteCliArgIfNeeded(pending.value)} `
+      const replaceEnd = pending.replaceEnd ?? pending.end
+      const next = `${buf.slice(0, pending.start)}${completed}${buf.slice(replaceEnd)}`
+      redrawInput(next, pending.start + completed.length)
+      pendingTokenCompletionRef.current = null
+      return true
+    }
+
+    const suggestTokenCompletion = (
+      range: CompletionRange,
+      prefix: string,
+      value: string,
+      appendSpace = true,
+      acceptCursorEnd?: number,
+      replaceEnd?: number
+    ): void => {
+      if (!value.startsWith(prefix)) return
+
+      const end = range.start + prefix.length
+      pendingTokenCompletionRef.current = {
+        start: range.start,
+        end,
+        acceptCursorEnd: acceptCursorEnd ?? end,
+        replaceEnd: replaceEnd ?? end,
+        prefix,
+        value,
+        appendSpace,
+        inputVersion: inputVersionRef.current,
+      }
+      renderInlineGhostHint(term, value.slice(prefix.length))
     }
 
     const insertTextAtCursor = (text: string): void => {
@@ -836,6 +1376,229 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
         })
     }
 
+    const completeRedisKey = async (context: KeyCompletionContext): Promise<void> => {
+      const connId = connectionIdRef.current
+      if (!connId || !isConnectedRef.current) return
+
+      try {
+        const response = (await window.redixAPI.cli.completeKeys(
+          connId,
+          context.prefix,
+          30,
+          context.typeFilter
+        )) as IPCResponse<CLIKeyCompletionResult>
+
+        if (!response?.success || !response.data) {
+          writeLine(term, response?.error?.message ?? 'Key completion failed', '31')
+          redrawPromptAndInput()
+          return
+        }
+
+        const keys = response.data.keys
+        const hasMore = response.data.hasMore
+        const candidates = sortKeySegmentCandidates(
+          context.prefix,
+          response.data.segments?.length
+            ? response.data.segments
+            : getNextKeySegmentCandidates(context.prefix, keys)
+        )
+        if (candidates.length === 1) {
+          const candidate = candidates[0]
+          if (isKeyNamespaceCandidate(context.prefix, candidate)) {
+            suggestTokenCompletion(
+              context.range,
+              context.prefix,
+              candidate,
+              false,
+              context.acceptCursorEnd,
+              context.replaceEnd
+            )
+            return
+          }
+          if (!hasMore && keys.length === 1 && candidate === keys[0]) {
+            suggestTokenCompletion(
+              context.range,
+              context.prefix,
+              candidate,
+              true,
+              context.acceptCursorEnd,
+              context.replaceEnd
+            )
+            return
+          }
+          pendingTokenCompletionRef.current = null
+          renderInlineGhostHint(term, ' ...')
+          return
+        }
+
+        if (candidates.length > 1) {
+          const commonPrefix = longestCommonPrefix(candidates)
+          if (commonPrefix.length > context.prefix.length) {
+            suggestTokenCompletion(
+              context.range,
+              context.prefix,
+              commonPrefix,
+              false,
+              context.acceptCursorEnd,
+              context.replaceEnd
+            )
+            return
+          }
+
+          if (context.range.end === cursorIndexRef.current) {
+            pendingTokenCompletionRef.current = null
+            renderInlineGhostHint(term, formatKeySegmentOptions(context.prefix, candidates))
+          } else {
+            pendingTokenCompletionRef.current = null
+            renderInlineGhostHint(term, '...')
+          }
+          return
+        }
+
+        if (keys.length > 0) {
+          pendingTokenCompletionRef.current = null
+          renderInlineGhostHint(term, ' ...')
+          return
+        }
+
+        pendingTokenCompletionRef.current = null
+        // A truncated scan (hasMore) that found nothing does NOT mean the key is
+        // absent — the scan budget was exhausted before a match surfaced. Only
+        // claim "no match" when the whole keyspace was scanned to completion.
+        renderInlineGhostHint(term, hasMore ? ' scanning… (keep typing to narrow)' : ' no match')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        pendingTokenCompletionRef.current = null
+        renderInlineGhostHint(term, ` ${msg}`)
+      }
+    }
+
+    const completeHashField = async (context: HashFieldCompletionContext): Promise<void> => {
+      const connId = connectionIdRef.current
+      if (!connId || !isConnectedRef.current) return
+
+      try {
+        const response = (await window.redixAPI.cli.completeHashFields(
+          connId,
+          context.key,
+          context.prefix,
+          30
+        )) as IPCResponse<CLIHashFieldCompletionResult>
+
+        if (!response?.success || !response.data) {
+          writeLine(term, response?.error?.message ?? 'Field completion failed', '31')
+          redrawPromptAndInput()
+          return
+        }
+
+        const fields = response.data.fields
+        const hasMore = response.data.hasMore
+        if (fields.length === 1 && !hasMore) {
+          suggestTokenCompletion(context.range, context.prefix, fields[0])
+          return
+        }
+
+        if (fields.length > 1) {
+          const commonPrefix = longestCommonPrefix(fields)
+          if (commonPrefix.length > context.prefix.length) {
+            suggestTokenCompletion(context.range, context.prefix, commonPrefix, false)
+            return
+          }
+
+          if (context.range.end === cursorIndexRef.current) {
+            pendingTokenCompletionRef.current = null
+            renderInlineGhostHint(term, fields[0].slice(context.prefix.length))
+          } else {
+            pendingTokenCompletionRef.current = null
+            renderInlineGhostHint(term, '...')
+          }
+          return
+        }
+
+        if (fields.length === 1) {
+          pendingTokenCompletionRef.current = null
+          renderInlineGhostHint(term, ' ...')
+          return
+        }
+
+        if (!context.prefix) {
+          await completeRedisKey({
+            prefix: context.keyRange.value,
+            range: context.keyRange,
+            typeFilter: 'hash',
+            acceptCursorEnd: context.range.end,
+            replaceEnd: context.range.end,
+          })
+          return
+        }
+
+        pendingTokenCompletionRef.current = null
+        renderInlineGhostHint(term, ' no field')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        pendingTokenCompletionRef.current = null
+        renderInlineGhostHint(term, ` ${msg}`)
+      }
+    }
+
+    const completeMember = async (context: MemberCompletionContext): Promise<void> => {
+      const connId = connectionIdRef.current
+      if (!connId || !isConnectedRef.current) return
+
+      try {
+        const response = (await window.redixAPI.cli.completeMembers(
+          connId,
+          context.key,
+          context.prefix,
+          context.kind,
+          30
+        )) as IPCResponse<CLIMemberCompletionResult>
+
+        if (!response?.success || !response.data) {
+          writeLine(term, response?.error?.message ?? 'Member completion failed', '31')
+          redrawPromptAndInput()
+          return
+        }
+
+        const members = response.data.members
+        const hasMore = response.data.hasMore
+        if (members.length === 1 && !hasMore) {
+          suggestTokenCompletion(context.range, context.prefix, members[0])
+          return
+        }
+
+        if (members.length > 1) {
+          const commonPrefix = longestCommonPrefix(members)
+          if (commonPrefix.length > context.prefix.length) {
+            suggestTokenCompletion(context.range, context.prefix, commonPrefix, false)
+            return
+          }
+
+          if (context.range.end === cursorIndexRef.current) {
+            pendingTokenCompletionRef.current = null
+            renderInlineGhostHint(term, members[0].slice(context.prefix.length))
+          } else {
+            pendingTokenCompletionRef.current = null
+            renderInlineGhostHint(term, '...')
+          }
+          return
+        }
+
+        if (members.length === 1) {
+          pendingTokenCompletionRef.current = null
+          renderInlineGhostHint(term, ' ...')
+          return
+        }
+
+        pendingTokenCompletionRef.current = null
+        renderInlineGhostHint(term, ' no member')
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err)
+        pendingTokenCompletionRef.current = null
+        renderInlineGhostHint(term, ` ${msg}`)
+      }
+    }
+
     // Intercept ONLY Tab for auto-completion; let all other keys pass through
     // to xterm.js normal processing so onKey / onData fire correctly.
     // Returning false = "I handled it, stop processing"
@@ -859,14 +1622,12 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
         e.preventDefault()
         if (isExecutingRef.current) return false
 
+        if (acceptPendingTokenCompletion()) {
+          return false
+        }
+
         clearGhostHint(term)
         const buf = inputBufferRef.current
-        const redrawPromptAndInput = (): void => {
-          term.write(`\r\n${formatPrompt(isConnectedRef.current, promptLabelRef.current)}`)
-          term.write(inputBufferRef.current)
-          cursorIndexRef.current = inputBufferRef.current.length
-          term.scrollToBottom()
-        }
 
         if (!buf.trim()) {
           term.write('\r\n\x1b[90mCommon patterns:\x1b[0m')
@@ -874,6 +1635,24 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
             term.write(`\r\n  \x1b[36m${pattern}\x1b[0m`)
           })
           redrawPromptAndInput()
+          return false
+        }
+
+        const hashFieldCompletionContext = getHashFieldCompletionContext(buf, cursorIndexRef.current)
+        if (hashFieldCompletionContext && connectionIdRef.current && isConnectedRef.current) {
+          void completeHashField(hashFieldCompletionContext)
+          return false
+        }
+
+        const memberCompletionContext = getMemberCompletionContext(buf, cursorIndexRef.current)
+        if (memberCompletionContext && connectionIdRef.current && isConnectedRef.current) {
+          void completeMember(memberCompletionContext)
+          return false
+        }
+
+        const keyCompletionContext = getKeyCompletionContext(buf, cursorIndexRef.current)
+        if (keyCompletionContext && connectionIdRef.current && isConnectedRef.current) {
+          void completeRedisKey(keyCompletionContext)
           return false
         }
 

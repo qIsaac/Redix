@@ -153,6 +153,22 @@ export interface CLIResult {
   truncated?: boolean;
 }
 
+export interface CLIKeyCompletionResult {
+  keys: string[];
+  segments?: string[];
+  hasMore: boolean;
+}
+
+export interface CLIHashFieldCompletionResult {
+  fields: string[];
+  hasMore: boolean;
+}
+
+export interface CLIMemberCompletionResult {
+  members: string[];
+  hasMore: boolean;
+}
+
 // 服务器指标
 export interface ServerMetrics {
   usedMemory: number;

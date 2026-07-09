@@ -12,7 +12,7 @@ use ring::{aead, digest};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fs,
     path::PathBuf,
     time::{SystemTime, UNIX_EPOCH},
@@ -32,6 +32,11 @@ const COMMAND_TIMEOUT_MS: u64 = 5_000;
 const CLI_OUTPUT_MAX_BYTES: usize = 256 * 1024;
 const CLI_ARRAY_MAX_ITEMS: usize = 1_000;
 const CLI_FORMAT_MAX_DEPTH: usize = 8;
+const CLI_COMPLETION_MAX_KEYS: usize = 50;
+const CLI_COMPLETION_SCAN_MAX_ITERATIONS: usize = 12;
+const CLI_COMPLETION_DEEP_PREFIX_MIN_CHARS: usize = 32;
+const CLI_COMPLETION_DEEP_SCAN_COUNT: usize = 1_000;
+const CLI_COMPLETION_DEEP_SCAN_MAX_ITERATIONS: usize = usize::MAX;
 const BINARY_PREVIEW_BYTES: usize = 64 * 1024;
 const KEYCHAIN_SERVICE: &str = "com.redix.desktop";
 const FALLBACK_SECRET_ACCOUNT: &str = "password-fallback-secret";
@@ -2047,7 +2052,11 @@ async fn data_add_field(
                     .query_async::<RedisValue>(&mut client)
                     .await
                 {
-                    return fail("DATA_ERROR", "Failed to add field", classify_redis_error(err));
+                    return fail(
+                        "DATA_ERROR",
+                        "Failed to add field",
+                        classify_redis_error(err),
+                    );
                 }
             }
             redis::cmd("HSET")
@@ -2351,6 +2360,274 @@ async fn cli_execute(
             "isWarning": is_warning
         })),
     }
+}
+
+fn redis_glob_escape_prefix(prefix: &str) -> String {
+    let mut escaped = String::with_capacity(prefix.len());
+    for ch in prefix.chars() {
+        if matches!(ch, '*' | '?' | '[' | ']' | '\\') {
+            escaped.push('\\');
+        }
+        escaped.push(ch);
+    }
+    escaped
+}
+
+fn next_key_segment_candidate(prefix: &str, key: &str) -> Option<String> {
+    let remaining = key.strip_prefix(prefix)?;
+    if remaining.is_empty() {
+        return None;
+    }
+
+    remaining
+        .find(':')
+        .map(|index| format!("{}{}", prefix, &remaining[..=index]))
+        .or_else(|| Some(key.to_string()))
+}
+
+#[tauri::command]
+async fn cli_complete_keys(
+    connection_id: String,
+    prefix: String,
+    type_filter: Option<String>,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> JsonResponse {
+    let Ok(mut client) = get_client(&state, &connection_id).await else {
+        return fail("CLI_ERROR", "Failed to complete keys", "Not connected");
+    };
+
+    let max_keys = limit
+        .unwrap_or(CLI_COMPLETION_MAX_KEYS)
+        .clamp(1, CLI_COMPLETION_MAX_KEYS);
+    let normalized_type_filter = type_filter
+        .map(|kind| kind.trim().to_ascii_lowercase())
+        .filter(|kind| {
+            matches!(
+                kind.as_str(),
+                "string" | "hash" | "list" | "set" | "zset" | "stream"
+            )
+    });
+    let pattern = format!("{}*", redis_glob_escape_prefix(&prefix));
+    let fetch_limit = max_keys + 1;
+    let is_deep_prefix = prefix.chars().count() >= CLI_COMPLETION_DEEP_PREFIX_MIN_CHARS;
+    let scan_count = if is_deep_prefix {
+        CLI_COMPLETION_DEEP_SCAN_COUNT
+    } else {
+        DEFAULT_SCAN_COUNT
+    };
+    let max_iterations = if is_deep_prefix {
+        CLI_COMPLETION_DEEP_SCAN_MAX_ITERATIONS
+    } else {
+        CLI_COMPLETION_SCAN_MAX_ITERATIONS
+    };
+    let mut cursor = 0_u64;
+    let mut iterations = 0_usize;
+    let mut keys = Vec::new();
+    let mut segments = HashSet::new();
+
+    while (keys.len() < fetch_limit || segments.len() < fetch_limit)
+        && iterations < max_iterations
+    {
+        iterations += 1;
+        let scan_result: Result<(u64, Vec<String>), String> = redis::cmd("SCAN")
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(&pattern)
+            .arg("COUNT")
+            .arg(scan_count)
+            .query_async(&mut client)
+            .await
+            .map_err(classify_redis_error);
+        let (next, batch) = match scan_result {
+            Ok(result) => result,
+            Err(err) => return fail("CLI_ERROR", "Failed to complete keys", err),
+        };
+        cursor = next;
+        let matched_keys: Vec<String> = if let Some(expected_type) = &normalized_type_filter {
+            let types = match batch_types(&mut client, &batch).await {
+                Ok(types) => types,
+                Err(err) => return fail("CLI_ERROR", "Failed to complete keys", err),
+            };
+            batch
+                .into_iter()
+                .zip(types.into_iter())
+                .filter_map(|(key, kind)| (kind == *expected_type).then_some(key))
+                .collect()
+        } else {
+            batch
+        };
+
+        for key in matched_keys {
+            if keys.len() < fetch_limit {
+                keys.push(key.clone());
+            }
+            if segments.len() < fetch_limit {
+                if let Some(segment) = next_key_segment_candidate(&prefix, &key) {
+                    segments.insert(segment);
+                }
+            }
+        }
+        if cursor == 0 {
+            break;
+        }
+    }
+
+    keys.sort();
+    keys.dedup();
+    let has_more = cursor != 0 || keys.len() > max_keys;
+    keys.truncate(max_keys);
+    let mut segments: Vec<String> = segments.into_iter().collect();
+    segments.sort();
+    segments.truncate(max_keys);
+
+    ok(json!({
+        "keys": keys,
+        "segments": segments,
+        "hasMore": has_more,
+    }))
+}
+
+#[tauri::command]
+async fn cli_complete_hash_fields(
+    connection_id: String,
+    key: String,
+    prefix: String,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> JsonResponse {
+    let Ok(mut client) = get_client(&state, &connection_id).await else {
+        return fail(
+            "CLI_ERROR",
+            "Failed to complete hash fields",
+            "Not connected",
+        );
+    };
+
+    let max_fields = limit
+        .unwrap_or(CLI_COMPLETION_MAX_KEYS)
+        .clamp(1, CLI_COMPLETION_MAX_KEYS);
+    let pattern = format!("{}*", redis_glob_escape_prefix(&prefix));
+    let fetch_limit = max_fields + 1;
+    let mut cursor = 0_u64;
+    let mut iterations = 0_usize;
+    let mut fields = Vec::new();
+
+    while fields.len() < fetch_limit && iterations < CLI_COMPLETION_SCAN_MAX_ITERATIONS {
+        iterations += 1;
+        let scan_result: Result<(u64, Vec<Vec<u8>>), String> = redis::cmd("HSCAN")
+            .arg(&key)
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(&pattern)
+            .arg("COUNT")
+            .arg(DEFAULT_SCAN_COUNT)
+            .query_async(&mut client)
+            .await
+            .map_err(classify_redis_error);
+        let (next, raw) = match scan_result {
+            Ok(result) => result,
+            Err(err) => return fail("CLI_ERROR", "Failed to complete hash fields", err),
+        };
+        cursor = next;
+        fields.extend(
+            raw.chunks(2)
+                .filter_map(|chunk| chunk.first())
+                .map(|field| String::from_utf8_lossy(field).to_string()),
+        );
+        if cursor == 0 {
+            break;
+        }
+    }
+
+    fields.sort();
+    fields.dedup();
+    let has_more = cursor != 0 || fields.len() > max_fields;
+    fields.truncate(max_fields);
+
+    ok(json!({
+        "fields": fields,
+        "hasMore": has_more,
+    }))
+}
+
+#[tauri::command]
+async fn cli_complete_members(
+    connection_id: String,
+    key: String,
+    prefix: String,
+    kind: String,
+    limit: Option<usize>,
+    state: State<'_, AppState>,
+) -> JsonResponse {
+    let Ok(mut client) = get_client(&state, &connection_id).await else {
+        return fail("CLI_ERROR", "Failed to complete members", "Not connected");
+    };
+
+    let scan_command = match kind.trim().to_ascii_lowercase().as_str() {
+        "set" => "SSCAN",
+        "zset" => "ZSCAN",
+        _ => {
+            return fail(
+                "CLI_ERROR",
+                "Failed to complete members",
+                "Unsupported member type",
+            )
+        }
+    };
+
+    let max_members = limit
+        .unwrap_or(CLI_COMPLETION_MAX_KEYS)
+        .clamp(1, CLI_COMPLETION_MAX_KEYS);
+    let pattern = format!("{}*", redis_glob_escape_prefix(&prefix));
+    let fetch_limit = max_members + 1;
+    let mut cursor = 0_u64;
+    let mut iterations = 0_usize;
+    let mut members = Vec::new();
+
+    while members.len() < fetch_limit && iterations < CLI_COMPLETION_SCAN_MAX_ITERATIONS {
+        iterations += 1;
+        let scan_result: Result<(u64, Vec<Vec<u8>>), String> = redis::cmd(scan_command)
+            .arg(&key)
+            .arg(cursor)
+            .arg("MATCH")
+            .arg(&pattern)
+            .arg("COUNT")
+            .arg(DEFAULT_SCAN_COUNT)
+            .query_async(&mut client)
+            .await
+            .map_err(classify_redis_error);
+        let (next, raw) = match scan_result {
+            Ok(result) => result,
+            Err(err) => return fail("CLI_ERROR", "Failed to complete members", err),
+        };
+        cursor = next;
+        if scan_command == "ZSCAN" {
+            members.extend(
+                raw.chunks(2)
+                    .filter_map(|chunk| chunk.first())
+                    .map(|member| String::from_utf8_lossy(member).to_string()),
+            );
+        } else {
+            members.extend(
+                raw.into_iter()
+                    .map(|member| String::from_utf8_lossy(&member).to_string()),
+            );
+        }
+        if cursor == 0 {
+            break;
+        }
+    }
+
+    members.sort();
+    members.dedup();
+    let has_more = cursor != 0 || members.len() > max_members;
+    members.truncate(max_members);
+
+    ok(json!({
+        "members": members,
+        "hasMore": has_more,
+    }))
 }
 
 #[tauri::command]
@@ -2790,6 +3067,9 @@ pub fn run() {
             data_add_field,
             data_delete_field,
             cli_execute,
+            cli_complete_keys,
+            cli_complete_hash_fields,
+            cli_complete_members,
             server_info,
             server_metrics,
             server_slowlog

@@ -4,7 +4,7 @@ import * as ContextMenu from '@radix-ui/react-context-menu'
 import * as Dialog from '@radix-ui/react-dialog'
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu'
 import { Search, RefreshCw, Filter, Key, List as ListIcon, FolderTree, ChevronRight, ChevronDown, Folder, Plus, X, Save } from 'lucide-react'
-import { useBrowserStore } from '../store/browserStore'
+import { MIN_KEY_SEARCH_CHARS, isPlainSearchTooShort, useBrowserStore } from '../store/browserStore'
 import { useConnectionStore } from '../store/connectionStore'
 import { APP_CONFIG } from '../shared/constants'
 import type { IPCResponse, KeyInfo } from '../shared/types'
@@ -59,26 +59,47 @@ function buildTree(keys: KeyInfo[]): TreeNode {
   return root
 }
 
-/** Collect fullPaths of all ancestors of keys matching `term` */
+/** Collect ancestors needed to reveal the deepest path segment matching `term`. */
 function collectMatchingAncestors(root: TreeNode, term: string): Set<string> {
   const expanded = new Set<string>()
   const lowerTerm = term.toLowerCase()
+  const fallbackTargets: string[][] = []
 
-  function walk(node: TreeNode): boolean {
-    let matched = false
-    for (const child of node.children.values()) {
-      if (child.isLeaf && child.fullPath.toLowerCase().includes(lowerTerm)) {
-        matched = true
-      }
-      if (walk(child)) {
-        expanded.add(node.fullPath)
-        matched = true
-      }
+  function expandAncestors(parts: string[], targetIndex: number): void {
+    for (let index = 0; index < targetIndex; index += 1) {
+      expanded.add(parts.slice(0, index + 1).join(':'))
     }
-    return matched
   }
 
-  walk(root)
+  function walk(node: TreeNode, parts: string[]): boolean {
+    let hasSegmentMatch = false
+    for (const child of node.children.values()) {
+      const childParts = [...parts, child.name]
+      const childNameMatches = child.name.toLowerCase().includes(lowerTerm)
+      if (childNameMatches) {
+        expandAncestors(childParts, childParts.length - 1)
+        hasSegmentMatch = true
+      }
+
+      if (
+        !childNameMatches
+        && child.fullPath.toLowerCase().includes(lowerTerm)
+        && !node.fullPath.toLowerCase().includes(lowerTerm)
+      ) {
+        fallbackTargets.push(childParts)
+      }
+
+      if (walk(child, childParts)) hasSegmentMatch = true
+    }
+    return hasSegmentMatch
+  }
+
+  const hasSegmentMatch = walk(root, [])
+  if (!hasSegmentMatch) {
+    for (const parts of fallbackTargets) {
+      expandAncestors(parts, parts.length - 1)
+    }
+  }
   return expanded
 }
 
@@ -351,6 +372,7 @@ interface TreeRowProps {
   rows: TreeRowData[]
   selectedKey: KeyInfo | null
   expandedPaths: Set<string>
+  prefixScans: Record<string, { sessionId: string | null; hasMore: boolean }>
   onToggle: (path: string) => void
   onSelect: (key: KeyInfo) => void
   onLoadChildren: (prefix: string) => void
@@ -366,6 +388,7 @@ function TreeRow({
   onToggle,
   onSelect,
   onLoadChildren,
+  prefixScans,
 }: {
   ariaAttributes: { 'aria-posinset': number; 'aria-setsize': number; role: 'listitem' }
   index: number
@@ -373,6 +396,7 @@ function TreeRow({
   rows: TreeRowData[]
   selectedKey: KeyInfo | null
   expandedPaths: Set<string>
+  prefixScans: Record<string, { sessionId: string | null; hasMore: boolean }>
   onToggle: (path: string) => void
   onSelect: (key: KeyInfo) => void
   onLoadChildren: (prefix: string) => void
@@ -383,6 +407,14 @@ function TreeRow({
   const { node, depth } = row
   const t = useI18n((s) => s.t)
   const isExpanded = expandedPaths.has(node.fullPath)
+  // A prefix that has been scanned before but reports no more pages is fully loaded.
+  const prefixScan = prefixScans[node.fullPath]
+  const childrenFullyLoaded = Boolean(prefixScan && !prefixScan.hasMore)
+  const loadChildrenLabel = prefixScan
+    ? childrenFullyLoaded
+      ? t('browser.allChildrenLoaded')
+      : t('browser.loadMoreChildren')
+    : t('browser.loadChildren')
 
   const handleCopyPath = useCallback(() => {
     navigator.clipboard.writeText(node.fullPath).catch(() => { /* ignore */ })
@@ -440,8 +472,9 @@ function TreeRow({
               <ContextMenu.Item
                 className="context-menu-item"
                 onSelect={handleLoadChildren}
+                disabled={childrenFullyLoaded}
               >
-                {t('browser.loadChildren')}
+                {loadChildrenLabel}
               </ContextMenu.Item>
               <ContextMenu.Separator className="context-menu-separator" />
             </>
@@ -469,6 +502,7 @@ const KeyBrowser: React.FC = () => {
   const searchTerm = useBrowserStore((s) => s.searchTerm)
   const typeFilter = useBrowserStore((s) => s.typeFilter)
   const totalScanned = useBrowserStore((s) => s.totalScanned)
+  const prefixScans = useBrowserStore((s) => s.prefixScans)
 
   const startScan = useBrowserStore((s) => s.startScan)
   const loadNextPage = useBrowserStore((s) => s.loadNextPage)
@@ -489,15 +523,18 @@ const KeyBrowser: React.FC = () => {
 
   // Tree expanded state
   const [manualExpanded, setManualExpanded] = useState<Set<string>>(new Set())
+  const [manualCollapsed, setManualCollapsed] = useState<Set<string>>(new Set())
 
   const activeConnection = connections.find((c) => c.config.id === activeConnectionId) ?? null
   const isConnected = activeConnection?.status === 'connected'
+  const isSearchTooShort = isPlainSearchTooShort(searchTerm)
 
   // Auto-start scan when connection becomes active or database changes
   useEffect(() => {
     if (activeConnectionId && isConnected) {
       // Clear manual expanded paths when switching databases
       setManualExpanded(new Set())
+      setManualCollapsed(new Set())
       startScan(activeConnectionId, searchTerm.trim() || undefined, typeFilter, currentDb)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -519,16 +556,21 @@ const KeyBrowser: React.FC = () => {
       // merge with manual toggles
       const merged = new Set(manualExpanded)
       for (const p of auto) merged.add(p)
+      for (const p of manualCollapsed) merged.delete(p)
       return merged
     }
     return manualExpanded
-  }, [treeRoot, searchTerm, manualExpanded])
+  }, [treeRoot, searchTerm, manualExpanded, manualCollapsed])
 
   const treeRows = useMemo(() => flattenTree(treeRoot, expandedPaths), [treeRoot, expandedPaths])
 
   useEffect(() => {
     loadingTriggeredRef.current = false
   }, [viewMode, filteredKeys.length])
+
+  useEffect(() => {
+    setManualCollapsed(new Set())
+  }, [searchTerm, typeFilter])
 
   // Debounced search
   const handleSearchChange = useCallback(
@@ -596,20 +638,35 @@ const KeyBrowser: React.FC = () => {
   }, [])
 
   const handleToggleNode = useCallback((path: string) => {
+    const isSearching = Boolean(searchTerm.trim())
+    const isExpanded = expandedPaths.has(path)
+
     setManualExpanded((prev) => {
       const next = new Set(prev)
-      if (next.has(path)) {
+      if (isExpanded) {
         next.delete(path)
       } else {
         next.add(path)
       }
       return next
     })
-  }, [])
+
+    if (isSearching) {
+      setManualCollapsed((prev) => {
+        const next = new Set(prev)
+        if (isExpanded) {
+          next.add(path)
+        } else {
+          next.delete(path)
+        }
+        return next
+      })
+    }
+  }, [expandedPaths, searchTerm])
 
   const handleLoadChildren = useCallback((prefix: string) => {
     if (activeConnectionId) {
-      scanWithPrefix(activeConnectionId, prefix, currentDb)
+      scanWithPrefix(activeConnectionId, prefix, currentDb, typeFilter)
       // Auto-expand the node so children are visible after loading
       setManualExpanded((prev) => {
         const next = new Set(prev)
@@ -617,7 +674,7 @@ const KeyBrowser: React.FC = () => {
         return next
       })
     }
-  }, [activeConnectionId, currentDb, scanWithPrefix])
+  }, [activeConnectionId, currentDb, scanWithPrefix, typeFilter])
 
   const handleQuickCreated = useCallback(
     (key: KeyInfo) => {
@@ -645,11 +702,12 @@ const KeyBrowser: React.FC = () => {
       rows: treeRows,
       selectedKey,
       expandedPaths,
+      prefixScans,
       onToggle: handleToggleNode,
       onSelect: handleSelectKey,
       onLoadChildren: handleLoadChildren,
     }),
-    [treeRows, selectedKey, expandedPaths, handleToggleNode, handleSelectKey, handleLoadChildren]
+    [treeRows, selectedKey, expandedPaths, prefixScans, handleToggleNode, handleSelectKey, handleLoadChildren]
   )
 
   // No connection selected
@@ -669,104 +727,86 @@ const KeyBrowser: React.FC = () => {
     <>
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
       {/* Toolbar */}
-      <div
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          gap: 8,
-          padding: '8px 12px',
-          borderBottom: '1px solid var(--border-color)',
-          flexShrink: 0,
-        }}
-      >
-        <div className="search-input-wrapper" style={{ flex: 1 }}>
+      <div className="key-browser-toolbar">
+        <div className="search-input-wrapper key-search-input-wrapper">
           <input
-            className="search-input"
+            className="search-input key-search-input"
             type="text"
             placeholder={t('browser.searchKeys')}
             value={searchTerm}
             onChange={handleSearchChange}
+            autoCapitalize="none"
+            autoComplete="off"
+            autoCorrect="off"
+            spellCheck={false}
           />
           <Search className="search-input-icon" />
         </div>
 
-        <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-          <select
-            className="input"
-            style={{
-              padding: '4px 24px 4px 8px',
-              fontSize: 'var(--font-size-sm)',
-              appearance: 'none',
-              cursor: 'pointer',
-              minWidth: 80,
-            }}
-            value={typeFilter ?? ''}
-            onChange={handleTypeFilterChange}
-          >
-            <option value="">{t('browser.allTypes')}</option>
-            {KEY_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {t}
-              </option>
-            ))}
-          </select>
-          <Filter
-            size={12}
-            style={{
-              position: 'absolute',
-              right: 8,
-              pointerEvents: 'none',
-              color: 'var(--text-tertiary)',
-            }}
-          />
-        </div>
-
-        {/* View mode toggle */}
-        <div className="view-toggle">
-          <button
-            className={`view-toggle-btn${viewMode === 'list' ? ' active' : ''}`}
-            onClick={() => setViewMode('list')}
-            title={t('browser.listView')}
-          >
-            <ListIcon size={14} />
-          </button>
-          <button
-            className={`view-toggle-btn${viewMode === 'tree' ? ' active' : ''}`}
-            onClick={() => setViewMode('tree')}
-            title={t('browser.treeView')}
-          >
-            <FolderTree size={14} />
-          </button>
-        </div>
-
-        <DropdownMenu.Root>
-          <DropdownMenu.Trigger asChild>
-            <button className="btn btn-ghost btn-sm" title={t('quickAdd.menuTitle')} disabled={!isConnected}>
-              <Plus size={14} />
-            </button>
-          </DropdownMenu.Trigger>
-          <DropdownMenu.Portal>
-            <DropdownMenu.Content className="context-menu" align="end" sideOffset={4}>
-              {QUICK_ADD_TYPES.map((type) => (
-                <DropdownMenu.Item
-                  key={type}
-                  className="context-menu-item"
-                  onSelect={() => setQuickAddType(type)}
-                >
-                  {t(`quickAdd.type.${type}`)}
-                </DropdownMenu.Item>
+        <div className="key-browser-actions">
+          <div className="key-type-filter">
+            <select
+              className="input"
+              value={typeFilter ?? ''}
+              onChange={handleTypeFilterChange}
+            >
+              <option value="">{t('browser.allTypes')}</option>
+              {KEY_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
               ))}
-              <DropdownMenu.Separator className="context-menu-separator" />
-              <DropdownMenu.Item className="context-menu-item" disabled>
-                {t('quickAdd.import')}
-              </DropdownMenu.Item>
-            </DropdownMenu.Content>
-          </DropdownMenu.Portal>
-        </DropdownMenu.Root>
+            </select>
+            <Filter size={12} />
+          </div>
 
-        <button className="btn btn-ghost btn-sm" onClick={handleRefresh} title={t('browser.refresh')} disabled={isLoading}>
-          <RefreshCw size={14} className={isLoading ? 'spinning' : ''} />
-        </button>
+          {/* View mode toggle */}
+          <div className="view-toggle">
+            <button
+              className={`view-toggle-btn${viewMode === 'list' ? ' active' : ''}`}
+              onClick={() => setViewMode('list')}
+              title={t('browser.listView')}
+            >
+              <ListIcon size={14} />
+            </button>
+            <button
+              className={`view-toggle-btn${viewMode === 'tree' ? ' active' : ''}`}
+              onClick={() => setViewMode('tree')}
+              title={t('browser.treeView')}
+            >
+              <FolderTree size={14} />
+            </button>
+          </div>
+
+          <DropdownMenu.Root>
+            <DropdownMenu.Trigger asChild>
+              <button className="btn btn-ghost btn-sm btn-icon" title={t('quickAdd.menuTitle')} disabled={!isConnected}>
+                <Plus size={14} />
+              </button>
+            </DropdownMenu.Trigger>
+            <DropdownMenu.Portal>
+              <DropdownMenu.Content className="context-menu" align="end" sideOffset={4}>
+                {QUICK_ADD_TYPES.map((type) => (
+                  <DropdownMenu.Item
+                    key={type}
+                    className="context-menu-item"
+                    onSelect={() => setQuickAddType(type)}
+                  >
+                    {t(`quickAdd.type.${type}`)}
+                  </DropdownMenu.Item>
+                ))}
+                <DropdownMenu.Separator className="context-menu-separator" />
+                <DropdownMenu.Item className="context-menu-item" disabled>
+                  {t('quickAdd.import')}
+                </DropdownMenu.Item>
+              </DropdownMenu.Content>
+            </DropdownMenu.Portal>
+          </DropdownMenu.Root>
+
+          <button className="btn btn-ghost btn-sm btn-icon" onClick={handleRefresh} title={t('browser.refresh')} disabled={isLoading}>
+            <RefreshCw size={14} className={isLoading ? 'spinning' : ''} />
+          </button>
+        </div>
       </div>
 
       {/* Key List / Tree */}
@@ -784,7 +824,9 @@ const KeyBrowser: React.FC = () => {
             <Key className="empty-state-icon" />
             <div className="empty-state-title">{t('browser.noKeysFound')}</div>
             <div className="empty-state-description">
-              {searchTerm
+              {isSearchTooShort
+                ? t('browser.searchMinChars', { count: MIN_KEY_SEARCH_CHARS })
+                : searchTerm
                 ? t('browser.noKeysMatch', { term: searchTerm })
                 : t('browser.databaseEmpty')}
             </div>

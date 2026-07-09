@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react'
-import { Trash2, Edit3, Clock, Key, Copy, Save } from 'lucide-react'
+import { Trash2, Edit3, Clock, Key, Copy, Save, RefreshCw } from 'lucide-react'
 import { useBrowserStore } from '../store/browserStore'
 import { useConnectionStore } from '../store/connectionStore'
 import { StringEditor, HashEditor, ListEditor, SetEditor, ZSetEditor, StreamViewer } from './editors'
@@ -11,8 +11,11 @@ const KeyDetail: React.FC = () => {
   const deleteKey = useBrowserStore((s) => s.deleteKey)
   const renameKey = useBrowserStore((s) => s.renameKey)
   const setKeyTTL = useBrowserStore((s) => s.setKeyTTL)
+  const refreshSelectedKey = useBrowserStore((s) => s.refreshSelectedKey)
   const activeConnectionId = useConnectionStore((s) => s.activeConnectionId)
 
+  const [refreshToken, setRefreshToken] = useState(0)
+  const [isRefreshing, setIsRefreshing] = useState(false)
   const [editingTTL, setEditingTTL] = useState(false)
   const [ttlValue, setTTLValue] = useState('')
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
@@ -53,6 +56,19 @@ const KeyDetail: React.FC = () => {
       })
     }
   }, [selectedKey])
+
+  const handleRefresh = useCallback(async () => {
+    if (!activeConnectionId || !selectedKey || !targetMatches || isRefreshing) return
+    setIsRefreshing(true)
+    try {
+      // Refresh header info (type/ttl/memory) from the store, and remount the
+      // editor via a changing key so it re-fetches the latest value.
+      await refreshSelectedKey(activeConnectionId)
+      setRefreshToken((token) => token + 1)
+    } finally {
+      setIsRefreshing(false)
+    }
+  }, [activeConnectionId, selectedKey, targetMatches, isRefreshing, refreshSelectedKey])
 
   useEffect(() => {
     if (!editingTTL) return
@@ -119,8 +135,10 @@ const KeyDetail: React.FC = () => {
           </span>
           <span
             className="mono"
+            title={selectedKey.key}
             style={{
               flex: 1,
+              minWidth: 0,
               fontSize: 'var(--font-size-md)',
               fontWeight: 600,
               color: 'var(--text-primary)',
@@ -131,9 +149,19 @@ const KeyDetail: React.FC = () => {
           >
             {selectedKey.key}
           </span>
-          <button className="btn btn-ghost btn-sm" onClick={handleCopyKey} title={t('detail.copyKeyName')}>
-            <Copy size={13} />
-          </button>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+            <button
+              className="btn btn-ghost btn-sm btn-icon"
+              onClick={handleRefresh}
+              disabled={!targetMatches || isRefreshing}
+              title={t('detail.refresh')}
+            >
+              <RefreshCw size={13} className={isRefreshing ? 'spinning' : ''} />
+            </button>
+            <button className="btn btn-ghost btn-sm btn-icon" onClick={handleCopyKey} title={t('detail.copyKeyName')}>
+              <Copy size={13} />
+            </button>
+          </div>
         </div>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
@@ -192,7 +220,7 @@ const KeyDetail: React.FC = () => {
 
       {/* Editor Area */}
       <div style={{ flex: 1, overflow: 'auto', padding: '12px 16px' }}>
-        {activeConnectionId && selectedKey && targetMatches && renderEditor(activeConnectionId, selectedKey.type, selectedKey.key)}
+        {activeConnectionId && selectedKey && targetMatches && renderEditor(activeConnectionId, selectedKey.type, selectedKey.key, refreshToken)}
         {!targetMatches && (
           <div className="empty-state" style={{ height: 'auto', padding: '40px 0' }}>
             <div className="empty-state-title">{t('detail.noKeySelected')}</div>
@@ -285,22 +313,26 @@ const KeyDetail: React.FC = () => {
 function renderEditor(
   connectionId: string,
   type: string,
-  keyName: string
+  keyName: string,
+  refreshToken: number
 ): React.ReactElement {
   const props = { connectionId, keyName }
+  // A changing refreshToken forces the editor to remount, re-running its
+  // initial data fetch so the displayed value reflects the latest state.
+  const editorKey = `${connectionId}:${keyName}:${refreshToken}`
   switch (type) {
     case 'string':
-      return <StringEditor {...props} />
+      return <StringEditor key={editorKey} {...props} />
     case 'hash':
-      return <HashEditor {...props} />
+      return <HashEditor key={editorKey} {...props} />
     case 'list':
-      return <ListEditor {...props} />
+      return <ListEditor key={editorKey} {...props} />
     case 'set':
-      return <SetEditor {...props} />
+      return <SetEditor key={editorKey} {...props} />
     case 'zset':
-      return <ZSetEditor {...props} />
+      return <ZSetEditor key={editorKey} {...props} />
     case 'stream':
-      return <StreamViewer {...props} />
+      return <StreamViewer key={editorKey} {...props} />
     default:
       return (
         <div className="empty-state" style={{ height: 'auto', padding: '40px 0' }}>

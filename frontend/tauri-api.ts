@@ -86,6 +86,12 @@ const dataAPI = {
 const cliAPI = {
   execute: (connectionId: string, command: string, confirmed?: boolean) =>
     call('cli_execute', { connectionId, command, confirmed }),
+  completeKeys: (connectionId: string, prefix: string, limit?: number, typeFilter?: string) =>
+    call('cli_complete_keys', { connectionId, prefix, limit, typeFilter }),
+  completeHashFields: (connectionId: string, key: string, prefix: string, limit?: number) =>
+    call('cli_complete_hash_fields', { connectionId, key, prefix, limit }),
+  completeMembers: (connectionId: string, key: string, prefix: string, kind: string, limit?: number) =>
+    call('cli_complete_members', { connectionId, key, prefix, kind, limit }),
 };
 
 const clipboardAPI = {

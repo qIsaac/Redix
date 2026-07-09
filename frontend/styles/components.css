@@ -96,6 +96,16 @@
   min-width: 80px;
 }
 
+.btn-icon {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
 .btn-lg {
   padding: 9px 20px;
   font-size: var(--font-size-lg);
@@ -1049,6 +1059,60 @@
 .search-input:focus + .search-input-icon,
 .search-input-wrapper:focus-within .search-input-icon {
   color: var(--accent-color);
+}
+
+/* ----------------------------------------
+ * Key Browser Toolbar
+ * ---------------------------------------- */
+.key-browser-toolbar {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 12px 10px;
+  border-bottom: 1px solid var(--border-color);
+  flex-shrink: 0;
+  background-color: var(--bg-primary);
+}
+
+.key-search-input-wrapper {
+  width: 100%;
+  min-width: 0;
+}
+
+.key-search-input {
+  height: 34px;
+  font-family: var(--font-mono);
+  font-size: var(--font-size-sm);
+}
+
+.key-browser-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.key-type-filter {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 112px;
+  flex: 1 1 140px;
+}
+
+.key-type-filter .input {
+  height: 32px;
+  padding: 4px 24px 4px 8px;
+  font-size: var(--font-size-sm);
+  appearance: none;
+  cursor: pointer;
+}
+
+.key-type-filter svg {
+  position: absolute;
+  right: 8px;
+  pointer-events: none;
+  color: var(--text-tertiary);
 }
 
 /* ----------------------------------------
