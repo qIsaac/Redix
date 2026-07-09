@@ -12,15 +12,24 @@
     "preview": "vite preview --config vite.config.ts",
     "verify:macos": "scripts/verify-macos-release.sh",
     "typecheck:web": "tsc --noEmit -p tsconfig.web.json --composite false",
-    "typecheck": "npm run typecheck:web"
+    "typecheck": "npm run typecheck:web",
+    "check": "npm run typecheck && cargo check --manifest-path src-tauri/Cargo.toml"
   },
   "keywords": [
     "redis",
     "tauri",
     "desktop"
   ],
-  "author": "",
+  "author": "Redix contributors",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/qIsaac/Redix.git"
+  },
+  "bugs": {
+    "url": "https://github.com/qIsaac/Redix/issues"
+  },
+  "homepage": "https://github.com/qIsaac/Redix#readme",
   "devDependencies": {
     "@radix-ui/react-context-menu": "^2.3.2",
     "@radix-ui/react-dialog": "^1.1.18",

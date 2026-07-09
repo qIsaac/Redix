@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1040" height="280" viewBox="0 0 1040 280">
+  <rect width="1040" height="280" rx="16" fill="#111111"/>
+  <g font-family="SF Mono, Menlo, Consolas, monospace" font-size="20">
+    <text x="28" y="50" fill="#00d7d7" font-weight="700">Welcome to Redix CLI</text>
+    <text x="28" y="84" fill="#d1d5db">Type 'help' for commands, 'tips' for smart hints, or press Tab for suggestions.</text>
+    <text x="28" y="118" fill="#d1d5db">Connected to: 127.0.0.1:6379</text>
+    <text x="28" y="168" fill="#39ff14">redis&gt;</text>
+    <text x="110" y="168" fill="#f5f5f7">hget app:user:1001:profile n</text>
+    <text x="494" y="168" fill="#6b7280">ame</text>
+    <rect x="110" y="186" width="428" height="2" fill="#374151"/>
+    <text x="28" y="232" fill="#9ca3af">Tab completes the hash field inline; press Tab again to accept.</text>
+  </g>
+</svg>

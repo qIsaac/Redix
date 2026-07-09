@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="860" height="560" viewBox="0 0 860 560">
+  <rect width="860" height="560" rx="16" fill="#f6f7fb"/>
+  <rect x="24" y="24" width="812" height="512" rx="12" fill="#ffffff" stroke="#dfe3ea"/>
+  <rect x="48" y="48" width="764" height="46" rx="10" fill="#f8fafc" stroke="#dfe3ea"/>
+  <text x="78" y="77" font-family="SF Mono, Menlo, Consolas, monospace" font-size="18" fill="#8a94a6">Search keys...</text>
+  <rect x="48" y="112" width="260" height="38" rx="8" fill="#ffffff" stroke="#dfe3ea"/>
+  <text x="66" y="137" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="16" fill="#303746">All Types</text>
+  <g font-family="SF Mono, Menlo, Consolas, monospace" font-size="17">
+    <rect x="48" y="172" width="70" height="28" rx="6" fill="#dff7ea"/>
+    <text x="60" y="192" fill="#16a34a">HASH</text>
+    <text x="136" y="192" fill="#1f2937">app:user:1001:profile</text>
+    <text x="752" y="192" fill="#9ca3af" text-anchor="end">3600s</text>
+    <line x1="48" y1="216" x2="812" y2="216" stroke="#edf0f4"/>
+    <rect x="48" y="232" width="70" height="28" rx="6" fill="#dff7ea"/>
+    <text x="60" y="252" fill="#16a34a">HASH</text>
+    <text x="136" y="252" fill="#1f2937">app:user:1001:settings</text>
+    <text x="752" y="252" fill="#9ca3af" text-anchor="end">-</text>
+    <line x1="48" y1="276" x2="812" y2="276" stroke="#edf0f4"/>
+    <rect x="48" y="292" width="86" height="28" rx="6" fill="#e2f0ff"/>
+    <text x="60" y="312" fill="#2563eb">STRING</text>
+    <text x="152" y="312" fill="#1f2937">app:session:token:7f3a</text>
+    <text x="752" y="312" fill="#9ca3af" text-anchor="end">842s</text>
+    <line x1="48" y1="336" x2="812" y2="336" stroke="#edf0f4"/>
+    <rect x="48" y="352" width="62" height="28" rx="6" fill="#fff1dd"/>
+    <text x="60" y="372" fill="#f97316">LIST</text>
+    <text x="128" y="372" fill="#1f2937">app:queue:email</text>
+    <line x1="48" y1="396" x2="812" y2="396" stroke="#edf0f4"/>
+    <rect x="48" y="412" width="54" height="28" rx="6" fill="#f3e8ff"/>
+    <text x="60" y="432" fill="#9333ea">SET</text>
+    <text x="120" y="432" fill="#1f2937">app:tags:active</text>
+    <line x1="48" y1="456" x2="812" y2="456" stroke="#edf0f4"/>
+    <rect x="48" y="472" width="92" height="28" rx="6" fill="#e0f7fa"/>
+    <text x="60" y="492" fill="#0891b2">STREAM</text>
+    <text x="158" y="492" fill="#1f2937">app:events:stream</text>
+  </g>
+</svg>

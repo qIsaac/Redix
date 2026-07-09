@@ -1,6 +1,12 @@
 .DS_Store
 .npm-cache/
 .tmp.iconset/
+.claude/
+.codex/
+.agents/
+.qoder/
+.vscode/
+.idea/
 
 node_modules/
 out/
@@ -10,7 +16,14 @@ src-tauri/target/
 
 *.log
 *.tsbuildinfo
+*.pem
+*.p8
+*.key
+*.crt
+*.cer
+*.mobileprovision
 
 coverage/
 .env
 .env.*
+!.env.example

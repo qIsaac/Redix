@@ -1727,6 +1727,13 @@ const Terminal: React.FC<TerminalProps> = ({ connectionId, currentDb, embedded =
     }
 
     term.write(formatPrompt(isConnected, promptLabelRef.current))
+    if (!embedded && import.meta.env.VITE_REDIX_DEMO === '1') {
+      const demoInput = 'hget app:user:1001:profile n'
+      inputBufferRef.current = demoInput
+      cursorIndexRef.current = demoInput.length
+      term.write(demoInput)
+      renderInlineGhostHint(term, 'ame')
+    }
     term.scrollToBottom()
 
     // Key handling

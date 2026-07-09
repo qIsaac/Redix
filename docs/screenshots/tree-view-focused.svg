@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="760" height="420" viewBox="0 0 760 420">
+  <rect width="760" height="420" rx="16" fill="#f6f7fb"/>
+  <rect x="24" y="24" width="712" height="372" rx="12" fill="#ffffff" stroke="#dfe3ea"/>
+  <rect x="48" y="48" width="664" height="46" rx="10" fill="#f8fafc" stroke="#1677ff" stroke-width="2"/>
+  <text x="78" y="77" font-family="SF Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2937">app:events</text>
+  <rect x="48" y="112" width="220" height="38" rx="8" fill="#ffffff" stroke="#dfe3ea"/>
+  <text x="66" y="137" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="16" fill="#303746">All Types</text>
+  <g font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="18" fill="#1f2937">
+    <path d="M64 184 L74 194 L84 184" fill="none" stroke="#667085" stroke-width="2"/>
+    <path d="M96 178 H116 L122 186 H150 V204 H96 Z" fill="#ffffff" stroke="#9ca3af"/>
+    <text x="162" y="195">app</text>
+    <text x="684" y="195" fill="#9ca3af" text-anchor="end">1</text>
+    <path d="M96 232 L106 242 L116 232" fill="none" stroke="#667085" stroke-width="2"/>
+    <path d="M128 226 H148 L154 234 H182 V252 H128 Z" fill="#ffffff" stroke="#9ca3af"/>
+    <text x="194" y="243">events</text>
+    <text x="684" y="243" fill="#9ca3af" text-anchor="end">1</text>
+  </g>
+  <rect x="160" y="272" width="92" height="28" rx="6" fill="#e0f7fa"/>
+  <text x="172" y="292" font-family="SF Mono, Menlo, Consolas, monospace" font-size="16" fill="#0891b2">STREAM</text>
+  <text x="272" y="292" font-family="SF Mono, Menlo, Consolas, monospace" font-size="18" fill="#1f2937">stream</text>
+  <text x="48" y="356" font-family="-apple-system, BlinkMacSystemFont, Segoe UI, sans-serif" font-size="15" fill="#8a94a6">1 key loaded - Scan complete</text>
+</svg>

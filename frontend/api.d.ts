@@ -71,6 +71,14 @@ interface RedixAPI {
 }
 
 declare global {
+  interface ImportMetaEnv {
+    readonly VITE_REDIX_DEMO?: string
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv
+  }
+
   interface Window {
     redixAPI: RedixAPI
   }

@@ -4,6 +4,9 @@ version = "1.0.0"
 description = "Redix Redis desktop client"
 authors = ["Redix"]
 edition = "2021"
+license = "MIT"
+repository = "https://github.com/qIsaac/Redix"
+homepage = "https://github.com/qIsaac/Redix"
 
 [lib]
 name = "redix_lib"
