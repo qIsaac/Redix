@@ -1,7 +1,7 @@
 {
   "name": "redix-app",
   "productName": "Redix",
-  "version": "1.0.0",
+  "version": "0.0.1",
   "description": "Redix — A modern Redis desktop client built with Tauri, React & TypeScript",
   "scripts": {
     "dev": "tauri dev",
